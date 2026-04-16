@@ -2,8 +2,8 @@
 
 Status legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked
 
-- [ ] **Phase 1 — Foundation** (depends on: none)
-  - [ ] 1.1 Monorepo skeleton + workspaces
+- [~] **Phase 1 — Foundation** (depends on: none)
+  - [x] 1.1 Monorepo skeleton + workspaces (merged deef6bc)
   - [ ] 1.2 Make orchestration + GNU make guard
   - [ ] 1.3 Local docker-compose (Postgres + Authelia)
   - [ ] 1.4 Shared config + OpenTelemetry bootstrap
