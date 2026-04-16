@@ -92,6 +92,41 @@ export interface LoginResponse {
   user: UserSelf;
 }
 
+export interface OIDCProvider {
+  id: string;
+  display_name: string;
+}
+
+/**
+ * Fetches the list of configured OIDC providers for the login page.
+ *
+ * Intentionally does NOT send an Authorization header (endpoint is public) and
+ * never throws: on any network or HTTP failure the login page must still
+ * render so local auth keeps working. Failures are logged to the console.
+ */
+export async function fetchProviders(): Promise<OIDCProvider[]> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/v1/auth/providers`, {
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (!response.ok) {
+      console.error(
+        `[api] fetchProviders failed with status ${response.status}`,
+      );
+      return [];
+    }
+    const body = (await response.json()) as unknown;
+    if (!Array.isArray(body)) {
+      console.error('[api] fetchProviders: unexpected response shape', body);
+      return [];
+    }
+    return body as OIDCProvider[];
+  } catch (err) {
+    console.error('[api] fetchProviders network error', err);
+    return [];
+  }
+}
+
 export interface RegisterRequest {
   email: string;
   password: string;

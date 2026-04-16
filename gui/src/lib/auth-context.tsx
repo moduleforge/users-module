@@ -26,6 +26,12 @@ interface AuthContextValue {
   ) => Promise<void>;
   logout: () => void;
   setTokenAndUser: (token: string, user: UserSelf) => void;
+  /**
+   * Finalize an externally-obtained session (e.g., OAuth callback) by
+   * storing the token and hydrating the user from `/v1/self`. On failure,
+   * clears the token and throws so the caller can surface the error.
+   */
+  completeExternalLogin: (token: string) => Promise<void>;
   refreshUser: () => Promise<void>;
 }
 
@@ -91,6 +97,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [setTokenAndUser],
   );
 
+  const completeExternalLogin = useCallback(
+    async (newToken: string) => {
+      // Store the token first so the shared `request()` helper in api.ts
+      // picks it up via localStorage for the `/v1/self` call below.
+      localStorage.setItem(TOKEN_KEY, newToken);
+      try {
+        const self = await api.self.get();
+        setTokenAndUser(newToken, self);
+      } catch (err) {
+        // Bad/expired token or API failure: don't leave a stale token behind.
+        localStorage.removeItem(TOKEN_KEY);
+        setToken(null);
+        setUser(null);
+        throw err;
+      }
+    },
+    [setTokenAndUser],
+  );
+
   const register = useCallback(
     async (
       email: string,
@@ -118,6 +143,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     register,
     logout,
     setTokenAndUser,
+    completeExternalLogin,
     refreshUser,
   };
 
