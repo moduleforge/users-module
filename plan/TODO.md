@@ -7,14 +7,14 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blo
   - [x] 1.2 Make orchestration + GNU make guard (merged 2c3c39c)
   - [x] 1.3 Local docker-compose + Authelia + MailHog (merged fee32b4) — live Docker test pending restart
   - [x] 1.4 Config loader + OTel bootstrap (merged 77d3485)
-- [ ] **Phase 2 — Data model** (depends on: 1)
-  - [ ] 2.1 Atlas + sqlc setup
-  - [ ] 2.2 entities + legal_entities + natural_persons + corporations + service_accounts migrations
-  - [ ] 2.3 users migration with trigger and UNIQUE auth index
-  - [ ] 2.4 auth_local + email_codes + password_resets migrations
-  - [ ] 2.5 apps + apps_users migrations
-  - [ ] 2.6 audit_log migration + helpers
-  - [ ] 2.7 sqlc query files per concept
+- [x] **Phase 2 — Data model** (depends on: 1)
+  - [x] 2.1 Atlas + sqlc setup
+  - [x] 2.2 entities + legal_entities + natural_persons + corporations + service_accounts migrations
+  - [x] 2.3 users migration with trigger and UNIQUE auth index
+  - [x] 2.4 auth_local + email_codes + password_resets migrations
+  - [x] 2.5 apps + apps_users migrations
+  - [x] 2.6 audit_log migration + helpers
+  - [x] 2.7 sqlc query files per concept
 - [ ] **Phase 3 — API core** (depends on: 2)
   - [ ] 3.1 Service skeleton (chi, pgx pool with size guards, slog, OTel, graceful shutdown)
   - [ ] 3.2 ClaimMapper interface + provider implementations

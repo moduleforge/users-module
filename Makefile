@@ -126,6 +126,34 @@ clean.api:   ; @$(MAKE) -C api   clean
 clean.gui:   ; @$(MAKE) -C gui   clean
 
 # ---------------------------------------------------------------------------
+# Model-specific delegating targets
+# ---------------------------------------------------------------------------
+
+.PHONY: model.migrate.new
+model.migrate.new: ## Create a new migration (NAME=… required)
+	@$(MAKE) -C model migrate.new NAME=$(NAME)
+
+.PHONY: model.migrate.up
+model.migrate.up: ## Apply pending model migrations
+	@$(MAKE) -C model migrate.up
+
+.PHONY: model.migrate.status
+model.migrate.status: ## Show model migration status
+	@$(MAKE) -C model migrate.status
+
+.PHONY: model.migrate.hash
+model.migrate.hash: ## Recalculate model migration hash
+	@$(MAKE) -C model migrate.hash
+
+.PHONY: model.gen
+model.gen: ## Generate Go code from model queries
+	@$(MAKE) -C model gen
+
+.PHONY: model.verify
+model.verify: ## Validate model migrations + queries
+	@$(MAKE) -C model verify
+
+# ---------------------------------------------------------------------------
 # Help (self-documenting)
 # ---------------------------------------------------------------------------
 # Any target whose recipe line contains `## description` is auto-listed.
