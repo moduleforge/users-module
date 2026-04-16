@@ -1,0 +1,34 @@
+---
+# Seeded users for local development.
+#
+# Passwords are stored as argon2id hashes (Authelia's default). To regenerate a
+# hash for a new password, run:
+#
+#   docker run --rm authelia/authelia:4.38 \
+#     authelia crypto hash generate argon2 --password 'yourpass'
+#
+# Documented passwords (DEV ONLY — DO NOT use these strings anywhere else):
+#   admin@example.test  -> admin-password
+#   user@example.test   -> user-password
+#
+# The hashes below were produced with the documented passwords using
+# argon2id, m=65536, t=1, p=8 (matches authentication_backend.file.password
+# parameters in configuration.yml).
+
+users:
+  admin:
+    displayname: "Local Admin"
+    # password: admin-password
+    password: "$argon2id$v=19$m=65536,t=1,p=8$eEsfMqwJxC1VnkpbttC43w$0M392trgON2/wja0U7oWzexcuPH9L7rXASnoIgILRlg"
+    email: admin@example.test
+    groups:
+      - admins
+      - users
+
+  user:
+    displayname: "Local User"
+    # password: user-password
+    password: "$argon2id$v=19$m=65536,t=1,p=8$GB1l3karVoMR4ieumVOtsw$w1O7UxPdnaFW+1INfv6oTOpAl9SxpZ7qPp+LgExAuNk"
+    email: user@example.test
+    groups:
+      - users

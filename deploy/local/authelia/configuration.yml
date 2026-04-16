@@ -1,0 +1,170 @@
+---
+# Minimal Authelia config for local users-module development.
+#
+# Reference: https://www.authelia.com/configuration/prologue/introduction/
+#
+# Secrets (identity_validation.reset_password.jwt_secret, session.secret,
+# storage.encryption_key, identity_providers.oidc.hmac_secret) are supplied via
+# env vars (AUTHELIA_*) defined in docker-compose.yml. This keeps real secret
+# material out of the YAML on disk.
+#
+# The OIDC signing key is inlined below because it is a dev-only key already
+# committed to the repo. For non-local use, supply it via env or a secrets
+# manager.
+
+server:
+  address: "tcp://0.0.0.0:9091"
+
+log:
+  level: info
+  format: text
+
+theme: light
+
+totp:
+  issuer: users-module-local
+
+# File-backed user database. See users_database.yml.
+authentication_backend:
+  password_reset:
+    disable: false
+  refresh_interval: 5m
+  file:
+    path: /config/users_database.yml
+    password:
+      algorithm: argon2id
+      iterations: 1
+      key_length: 32
+      salt_length: 16
+      memory: 65536
+      parallelism: 8
+
+# Permissive access control — local dev only. Real authz lives in the API.
+access_control:
+  default_policy: one_factor
+
+session:
+  name: authelia_session
+  expiration: 1h
+  inactivity: 5m
+  remember_me: 1M
+  cookies:
+    - domain: localhost
+      authelia_url: http://localhost:9091
+      default_redirection_url: http://localhost:3000/
+
+regulation:
+  max_retries: 5
+  find_time: 2m
+  ban_time: 5m
+
+# Local-only storage. SQLite written to /data (a writable path inside the
+# container) so it works even when /config is mounted read-only.
+storage:
+  local:
+    path: /data/db.sqlite3
+
+notifier:
+  disable_startup_check: true
+  smtp:
+    host: mailhog
+    port: 1025
+    sender: "Authelia <noreply@example.test>"
+    disable_require_tls: true
+    disable_html_emails: false
+
+# OIDC provider — the whole point of running real Authelia locally.
+identity_providers:
+  oidc:
+    jwks:
+      - key: |
+          -----BEGIN PRIVATE KEY-----
+          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
+          nH6kR0qb8dZkfe/Yo6j7RflTzuzmhA==
+          -----END PRIVATE KEY-----
+    cors:
+      endpoints:
+        - authorization
+        - token
+        - revocation
+        - introspection
+        - userinfo
+      allowed_origins_from_client_redirect_uris: true
+    clients:
+      - id: users-api
+        description: users-module API + GUI
+        # Placeholder secret — regenerate with:
+        #   docker run --rm authelia/authelia:4.38 authelia crypto hash generate pbkdf2 \
+        #     --variant sha512 --password 'your-real-secret'
+        # Plaintext (matches API/GUI client config in .env): change-me-users-api-client-secret
+        secret: '$pbkdf2-sha512$310000$g/thpMpvyP+szosZruwvrA$tHr/k5EnOIXK5aW9aw1RhPxF94o+qmMVd4OLgswqehZLI+NghdXPzdRIPVZCh6WJEy/KgfqunvdLLKn8dNPk3g'
+        public: false
+        authorization_policy: one_factor
+        consent_mode: implicit
+        scopes:
+          - openid
+          - profile
+          - email
+          - groups
+        redirect_uris:
+          - http://localhost:8080/v1/auth/oidc/callback
+          - http://localhost:3000/api/auth/oidc/callback
+        userinfo_signing_algorithm: none
+        token_endpoint_auth_method: client_secret_post
+        grant_types:
+          - authorization_code
+          - refresh_token
+        response_types:
+          - code
+        response_modes:
+          - form_post
+          - query
+          - fragment

@@ -1,0 +1,98 @@
+---
+# Local development stack for users-module.
+#
+# Usage:
+#   cp ../../.env.example .env   # then edit secrets
+#   docker compose up -d
+#   docker compose ps
+#   docker compose down -v       # tear down + drop volumes
+#
+# Services:
+#   - postgres : PostgreSQL 16 (data store)
+#   - authelia : OIDC provider (real OIDC, no mocks per dev/prod parity rule)
+#   - mailhog  : SMTP catcher for email-code auth flow testing
+#
+# All services share the `users-module-net` bridge network so they can
+# resolve each other by service name (e.g. `postgres`, `authelia`, `mailhog`).
+
+name: users-module
+
+networks:
+  users-module-net:
+    driver: bridge
+
+volumes:
+  postgres-data:
+    driver: local
+  authelia-data:
+    driver: local
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: users-module-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-users}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-users}
+      POSTGRES_DB: ${POSTGRES_DB:-users}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - users-module-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-users} -d ${POSTGRES_DB:-users}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  authelia:
+    image: authelia/authelia:4.38
+    container_name: users-module-authelia
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-UTC}
+      # Authelia reads these from env so secrets stay out of the YAML on disk.
+      AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET: ${AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET:-change-me-jwt-secret-at-least-32-chars-long}
+      AUTHELIA_SESSION_SECRET: ${AUTHELIA_SESSION_SECRET:-change-me-session-secret-at-least-32-chars}
+      AUTHELIA_STORAGE_ENCRYPTION_KEY: ${AUTHELIA_STORAGE_ENCRYPTION_KEY:-change-me-storage-encryption-key-at-least-32}
+      AUTHELIA_IDENTITY_PROVIDERS_OIDC_HMAC_SECRET: ${AUTHELIA_IDENTITY_PROVIDERS_OIDC_HMAC_SECRET:-change-me-oidc-hmac-secret-at-least-32}
+    volumes:
+      - ./authelia:/config:ro
+      - authelia-data:/data
+    ports:
+      - "${AUTHELIA_PORT:-9091}:9091"
+    networks:
+      - users-module-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:9091/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+
+  mailhog:
+    # Decision: MailHog chosen over Mailpit for this iteration purely because the
+    # `mailhog/mailhog` image is the most widely-cited SMTP catcher in OIDC dev
+    # stacks and has zero configuration. Mailpit is a fine drop-in replacement
+    # (faster, actively maintained) — swap the image and ports if preferred.
+    image: mailhog/mailhog:v1.0.1
+    container_name: users-module-mailhog
+    restart: unless-stopped
+    ports:
+      - "${SMTP_PORT:-1025}:1025"   # SMTP ingress
+      - "${MAILHOG_UI_PORT:-8025}:8025"   # Web UI
+    networks:
+      - users-module-net
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://localhost:8025"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
