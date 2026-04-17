@@ -2,7 +2,15 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LogIn, User, Users, ClipboardList, LayoutGrid, LogOut } from 'lucide-react';
+import {
+  ClipboardList,
+  LayoutGrid,
+  LogIn,
+  LogOut,
+  Settings,
+  User,
+  Users,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/button';
@@ -32,6 +40,12 @@ const navItems: NavItem[] = [
     label: 'Apps',
     href: '/admin/apps',
     icon: <LayoutGrid className="size-4" />,
+    adminOnly: true,
+  },
+  {
+    label: 'OIDC Settings',
+    href: '/oidc-config',
+    icon: <Settings className="size-4" />,
     adminOnly: true,
   },
 ];

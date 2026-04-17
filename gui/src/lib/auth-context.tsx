@@ -161,3 +161,14 @@ export function useAuth(): AuthContextValue {
   }
   return context;
 }
+
+/**
+ * Like {@link useAuth} but returns `null` if no `AuthProvider` is mounted
+ * rather than throwing. Used by pages that render in both authenticated
+ * and pre-auth contexts — e.g. `/oidc-config`, which is reachable during
+ * the initial setup flow (no provider mounted) AND post-confirmation
+ * (provider mounted, possibly with an admin session).
+ */
+export function useOptionalAuth(): AuthContextValue | null {
+  return useContext(AuthContext);
+}

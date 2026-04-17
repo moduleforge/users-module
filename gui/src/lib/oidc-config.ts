@@ -38,6 +38,26 @@ export interface OIDCConfirmRequest {
   opt_out: boolean;
 }
 
+/**
+ * Args for {@link postOIDCConfirm}. Exactly one authorization path must be
+ * provided:
+ *   - `setup_token` in the body (pre-confirmation onboarding flow).
+ *   - `adminBearer` header (authenticated admin re-configuring post-setup).
+ */
+export type OIDCConfirmArgs =
+  | {
+      enabled_providers: string[];
+      opt_out: boolean;
+      setup_token: string;
+      adminBearer?: never;
+    }
+  | {
+      enabled_providers: string[];
+      opt_out: boolean;
+      adminBearer: string;
+      setup_token?: never;
+    };
+
 export interface OIDCSavedConfig {
   enabled_providers: Record<string, boolean> | null;
   opt_out: boolean;
@@ -89,19 +109,45 @@ export async function fetchOIDCStatus(): Promise<OIDCStatus> {
 }
 
 /**
- * Submits the onboarding confirmation. On 200 the API returns the refreshed
- * status (same shape as GET /status). Errors (401 invalid token, 400 bad
- * body, 500 rebuild failure) surface as ApiRequestError so the page can
- * render `err.message` inline.
+ * Submits the onboarding confirmation. Accepts EITHER a `setup_token` in
+ * the body (pre-confirmation flow) OR an `adminBearer` string (admin
+ * re-configure post-setup; sent as Authorization: Bearer). On 200 the API
+ * returns the refreshed status (same shape as GET /status). Errors (401
+ * invalid token, 400 bad body, 500 rebuild failure) surface as
+ * ApiRequestError so the page can render `err.message` inline.
  */
 export async function postOIDCConfirm(
-  body: OIDCConfirmRequest,
+  args: OIDCConfirmArgs,
 ): Promise<OIDCStatus> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  let body: OIDCConfirmRequest | Omit<OIDCConfirmRequest, 'setup_token'>;
+  if ('adminBearer' in args && args.adminBearer) {
+    headers.Authorization = `Bearer ${args.adminBearer}`;
+    body = {
+      enabled_providers: args.enabled_providers,
+      opt_out: args.opt_out,
+    };
+  } else if ('setup_token' in args && args.setup_token !== undefined) {
+    body = {
+      setup_token: args.setup_token,
+      enabled_providers: args.enabled_providers,
+      opt_out: args.opt_out,
+    };
+  } else {
+    throw new ApiRequestError(
+      'bad_request',
+      'postOIDCConfirm requires either adminBearer or setup_token.',
+      0,
+    );
+  }
+
   let response: Response;
   try {
     response = await fetch(`${API_BASE_URL}/v1/oidc-config/confirm`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(body),
     });
   } catch (err) {
