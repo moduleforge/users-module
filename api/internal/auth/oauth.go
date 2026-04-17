@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -18,6 +19,27 @@ import (
 
 	"github.com/moduleforge/users-module/api/internal/config"
 )
+
+// microsoftTenantIssuerRe matches the tenant-specific issuer URL Microsoft
+// puts in id_tokens issued from the multi-tenant (/common, /organizations,
+// /consumers) v2.0 endpoints. Tenant IDs are UUIDs (36 hex-and-dash chars);
+// the personal-MSA tenant 9188040d-6c67-4c5b-b112-36a304b66dad matches the
+// same shape so no special case is needed.
+var microsoftTenantIssuerRe = regexp.MustCompile(`^https://login\.microsoftonline\.com/[0-9a-f-]{36}/v2\.0$`)
+
+// isValidMicrosoftIssuer verifies that an id_token's `iss` claim points to a
+// real tenant under login.microsoftonline.com. Callers must only invoke this
+// for providers flagged as MultiTenantIssuer, since strict go-oidc issuer
+// matching is disabled in that mode and this is the replacement check.
+func isValidMicrosoftIssuer(iss string) bool {
+	return microsoftTenantIssuerRe.MatchString(iss)
+}
+
+// multiTenantDiscoveryIssuer is the literal placeholder Microsoft returns
+// in the `issuer` field of /common, /organizations, and /consumers discovery
+// documents. Passed to oidc.InsecureIssuerURLContext so go-oidc accepts the
+// discovery response without treating the placeholder as a real issuer.
+const multiTenantDiscoveryIssuer = "https://login.microsoftonline.com/{tenantid}/v2.0"
 
 // stateTTL is how long a state token (and its cookie) remain valid. Five
 // minutes matches the spec and is comfortably longer than a typical IdP
@@ -165,7 +187,16 @@ func NewOAuth(ctx context.Context, cfg *config.Config) (*OAuth, error) {
 func initProvider(ctx context.Context, id string, p config.Provider, cfg *config.Config) *ProviderState {
 	state := &ProviderState{ID: id, Provider: p}
 
-	provider, err := oidc.NewProvider(ctx, p.IssuerURL)
+	// Microsoft's multi-tenant discovery endpoints return a literal
+	// "{tenantid}" placeholder in their `issuer` field, which go-oidc
+	// would otherwise reject as a mismatch. Wrap the discovery context so
+	// the library accepts the placeholder and defer real issuer validation
+	// to Exchange, where we inspect idToken.Issuer directly.
+	discoveryCtx := ctx
+	if p.MultiTenantIssuer {
+		discoveryCtx = oidc.InsecureIssuerURLContext(ctx, multiTenantDiscoveryIssuer)
+	}
+	provider, err := oidc.NewProvider(discoveryCtx, p.IssuerURL)
 	if err != nil {
 		state.Err = fmt.Errorf("provider %q discovery: %w", id, err)
 		return state
@@ -177,7 +208,10 @@ func initProvider(ctx context.Context, id string, p config.Provider, cfg *config
 		return state
 	}
 
-	state.Verifier = provider.Verifier(&oidc.Config{ClientID: p.ClientID})
+	state.Verifier = provider.Verifier(&oidc.Config{
+		ClientID:        p.ClientID,
+		SkipIssuerCheck: p.MultiTenantIssuer,
+	})
 	state.Mapper = mapper
 	state.OAuthCfg = &oauth2.Config{
 		ClientID:     p.ClientID,
@@ -378,6 +412,17 @@ func (o *OAuth) Exchange(ctx context.Context, providerID, code, rawState, cookie
 	idToken, err := s.Verifier.Verify(ctx, rawIDToken)
 	if err != nil {
 		return empty, emptyPayload, fmt.Errorf("oauth: verify id_token: %w", err)
+	}
+
+	// For multi-tenant Microsoft providers the verifier above was configured
+	// with SkipIssuerCheck=true (so the discovery-document placeholder doesn't
+	// trip it up); enforce the real tenant-issuer pattern here. Any id_token
+	// whose `iss` is not a well-formed Microsoft tenant issuer is rejected.
+	// We deliberately do NOT wrap ErrStateValidation here — non-sentinel
+	// errors get mapped by the handler to redirectToFrontendError(
+	// "authentication_failed"), which is the right UX for a spoofed token.
+	if s.Provider.MultiTenantIssuer && !isValidMicrosoftIssuer(idToken.Issuer) {
+		return empty, emptyPayload, fmt.Errorf("oauth: microsoft issuer not accepted: %q", idToken.Issuer)
 	}
 
 	if idToken.Nonce != payload.Nonce {

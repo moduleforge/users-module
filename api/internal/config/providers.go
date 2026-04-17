@@ -25,6 +25,12 @@ type Provider struct {
 	ClientSecret string
 	ClaimStyle   string
 	Scopes       []string
+	// MultiTenantIssuer marks providers whose discovery documents return a
+	// literal "{tenantid}" placeholder in the `issuer` field (Microsoft's
+	// /common, /organizations, /consumers endpoints). For these we skip
+	// go-oidc's strict issuer check at verification time and validate the
+	// real tenant-specific issuer ourselves after the id_token is decoded.
+	MultiTenantIssuer bool
 }
 
 // ProviderRegistry maps provider IDs to fully-resolved Provider entries.
@@ -69,6 +75,25 @@ var wellKnownProviders = map[string]providerDefaults{
 // from a standards-compliant OP; "email" and "profile" are needed to populate
 // Principal.Email and the user's display name.
 var defaultScopes = []string{"openid", "email", "profile"}
+
+// microsoftMultiTenantIssuers is the exact set of Microsoft v2.0 discovery
+// URLs whose `issuer` field in the discovery document is a literal
+// "{tenantid}" placeholder. Matches are exact (not substring) so that a
+// deployment pinning a specific tenant URL (e.g.
+// https://login.microsoftonline.com/<my-tenant-uuid>/v2.0) is treated as a
+// normal single-tenant provider with strict issuer checking enabled.
+var microsoftMultiTenantIssuers = map[string]struct{}{
+	"https://login.microsoftonline.com/common/v2.0":        {},
+	"https://login.microsoftonline.com/organizations/v2.0": {},
+	"https://login.microsoftonline.com/consumers/v2.0":     {},
+}
+
+// isMultiTenantIssuer reports whether an issuer URL is one of the known
+// Microsoft multi-tenant discovery endpoints.
+func isMultiTenantIssuer(issuerURL string) bool {
+	_, ok := microsoftMultiTenantIssuers[issuerURL]
+	return ok
+}
 
 // LoadProviders builds a ProviderRegistry by scanning the process environment.
 //
@@ -192,13 +217,14 @@ func loadProvider(id string) (*Provider, error) {
 	}
 
 	return &Provider{
-		ID:           id,
-		DisplayName:  displayName,
-		IssuerURL:    issuerURL,
-		ClientID:     clientID,
-		ClientSecret: clientSecret,
-		ClaimStyle:   claimStyle,
-		Scopes:       scopes,
+		ID:                id,
+		DisplayName:       displayName,
+		IssuerURL:         issuerURL,
+		ClientID:          clientID,
+		ClientSecret:      clientSecret,
+		ClaimStyle:        claimStyle,
+		Scopes:            scopes,
+		MultiTenantIssuer: isMultiTenantIssuer(issuerURL),
 	}, nil
 }
 

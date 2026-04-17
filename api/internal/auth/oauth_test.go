@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -677,4 +678,262 @@ func TestOAuth_Status(t *testing.T) {
 			t.Errorf("Status() = %q, want %q", got, want)
 		}
 	})
+}
+
+// TestIsValidMicrosoftIssuer pins down the tenant-issuer regex used to
+// replace go-oidc's strict issuer check for multi-tenant Microsoft providers.
+// The regex is load-bearing security: it's the only thing standing between a
+// spoofed id_token's `iss` claim and a successful login once SkipIssuerCheck
+// is enabled on the verifier. Exercise the shape carefully.
+func TestIsValidMicrosoftIssuer(t *testing.T) {
+	accept := []string{
+		// Canonical Azure tenant UUID.
+		"https://login.microsoftonline.com/11111111-2222-3333-4444-555555555555/v2.0",
+		// Personal-MSA tenant — matches the same UUID shape, no special case.
+		"https://login.microsoftonline.com/9188040d-6c67-4c5b-b112-36a304b66dad/v2.0",
+	}
+	for _, iss := range accept {
+		iss := iss
+		t.Run("accept/"+iss, func(t *testing.T) {
+			if !isValidMicrosoftIssuer(iss) {
+				t.Errorf("expected %q to be accepted", iss)
+			}
+		})
+	}
+
+	reject := map[string]string{
+		"empty":                   "",
+		"http (not https)":        "http://login.microsoftonline.com/11111111-2222-3333-4444-555555555555/v2.0",
+		"uppercase hex in tenant": "https://login.microsoftonline.com/11111111-2222-3333-4444-55555555555F/v2.0",
+		"trailing slash":          "https://login.microsoftonline.com/11111111-2222-3333-4444-555555555555/v2.0/",
+		"missing /v2.0":           "https://login.microsoftonline.com/11111111-2222-3333-4444-555555555555",
+		"v1.0 endpoint":           "https://login.microsoftonline.com/11111111-2222-3333-4444-555555555555/v1.0",
+		"literal placeholder":     "https://login.microsoftonline.com/{tenantid}/v2.0",
+		"common alias":            "https://login.microsoftonline.com/common/v2.0",
+		"non-uuid tenant":         "https://login.microsoftonline.com/notauuid/v2.0",
+		"wrong host":              "https://evil.example.com/11111111-2222-3333-4444-555555555555/v2.0",
+		"extra path":              "https://login.microsoftonline.com/11111111-2222-3333-4444-555555555555/v2.0/extra",
+		"too-short tenant":        "https://login.microsoftonline.com/11111111-2222-3333-4444-5555555555/v2.0",
+		"too-long tenant":         "https://login.microsoftonline.com/11111111-2222-3333-4444-5555555555555/v2.0",
+	}
+	for name, iss := range reject {
+		name, iss := name, iss
+		t.Run("reject/"+name, func(t *testing.T) {
+			if isValidMicrosoftIssuer(iss) {
+				t.Errorf("expected %q to be rejected", iss)
+			}
+		})
+	}
+}
+
+// newFakeMultiTenantHarness stands up a fake OIDC provider whose discovery
+// document advertises Microsoft's literal "{tenantid}" placeholder as its
+// `issuer` and whose id_token is signed with a caller-supplied `iss` claim.
+// This mirrors real Azure behavior: discovery says one thing, the token says
+// another, and our job is to accept the combination only when the token's
+// issuer matches the tenant-UUID pattern. Kept separate from
+// newFakeOIDCHarness so the existing 9.8 tests aren't perturbed.
+type fakeMultiTenantHarness struct {
+	cfg          *config.Config
+	expectedCode string
+	setNonce     func(string)
+}
+
+func newFakeMultiTenantHarness(t *testing.T, tokenIssuer string) *fakeMultiTenantHarness {
+	t.Helper()
+
+	signingKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("rsa.GenerateKey: %v", err)
+	}
+	const keyID = "test-key-1"
+
+	mux := http.NewServeMux()
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	clientID := "test-client-id"
+	clientSecret := "test-client-secret"
+	expectedCode := "test-auth-code"
+	expectedSubject := "ms-sub-123"
+	expectedEmail := "user@example.com"
+
+	var nonce string
+	setNonce := func(n string) { nonce = n }
+
+	// Discovery: all endpoints point at srv, but `issuer` is the literal
+	// Microsoft placeholder string. Everything else is standard.
+	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
+		cfg := map[string]any{
+			"issuer":                                "https://login.microsoftonline.com/{tenantid}/v2.0",
+			"authorization_endpoint":                srv.URL + "/authorize",
+			"token_endpoint":                        srv.URL + "/token",
+			"jwks_uri":                              srv.URL + "/jwks",
+			"response_types_supported":              []string{"code"},
+			"subject_types_supported":               []string{"public"},
+			"id_token_signing_alg_values_supported": []string{"RS256"},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(cfg)
+	})
+
+	mux.HandleFunc("/jwks", func(w http.ResponseWriter, r *http.Request) {
+		n := base64.RawURLEncoding.EncodeToString(signingKey.N.Bytes())
+		e := base64.RawURLEncoding.EncodeToString(big.NewInt(int64(signingKey.E)).Bytes())
+		jwks := map[string]any{
+			"keys": []map[string]any{
+				{"kty": "RSA", "alg": "RS256", "use": "sig", "kid": keyID, "n": n, "e": e},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(jwks)
+	})
+
+	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		if r.Form.Get("code") != expectedCode {
+			http.Error(w, "bad code", 400)
+			return
+		}
+		claims := jwt.MapClaims{
+			"iss":   tokenIssuer,
+			"aud":   clientID,
+			"sub":   expectedSubject,
+			"email": expectedEmail,
+			"nonce": nonce,
+			"iat":   time.Now().Unix(),
+			"exp":   time.Now().Add(time.Hour).Unix(),
+		}
+		idToken, err := signIDToken(signingKey, keyID, claims)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		resp := map[string]any{
+			"access_token": "test-access-token",
+			"id_token":     idToken,
+			"token_type":   "Bearer",
+			"expires_in":   3600,
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	})
+
+	// IssuerURL points at the test server so discovery actually works; the
+	// MultiTenantIssuer flag is set directly (LoadProviders would set it from
+	// the real Microsoft URL, but we can't dial Microsoft from a unit test).
+	// ClaimStyle "microsoft" exercises the mapper path we actually care about.
+	cfg := &config.Config{
+		Auth: config.AuthConfig{
+			AdminRole:            "admin",
+			FrontendReturnURL:    "http://gui.test/auth/oidc/return",
+			OAuthRedirectBaseURL: "http://api.test",
+		},
+		LocalAuth: config.LocalAuthConfig{
+			JWTSecret: "test-jwt-secret-for-state-signer",
+		},
+		Providers: config.ProviderRegistry{
+			"microsoft": config.Provider{
+				ID:                "microsoft",
+				DisplayName:       "Microsoft",
+				IssuerURL:         srv.URL,
+				ClientID:          clientID,
+				ClientSecret:      clientSecret,
+				ClaimStyle:        "microsoft",
+				Scopes:            []string{"openid", "email", "profile"},
+				MultiTenantIssuer: true,
+			},
+		},
+	}
+
+	return &fakeMultiTenantHarness{
+		cfg:          cfg,
+		expectedCode: expectedCode,
+		setNonce:     setNonce,
+	}
+}
+
+// runMultiTenantExchange is shared scaffolding for the three multi-tenant
+// exchange tests: it drives AuthorizeURL → Exchange and returns whatever
+// Exchange produced, so each test can assert success or a specific failure
+// without duplicating setup.
+func runMultiTenantExchange(t *testing.T, h *fakeMultiTenantHarness) (Principal, StatePayload, error) {
+	t.Helper()
+
+	oauth, err := NewOAuth(context.Background(), h.cfg)
+	if err != nil {
+		t.Fatalf("NewOAuth: %v", err)
+	}
+
+	authURL, stateToken, err := oauth.AuthorizeURL("microsoft", "/profile")
+	if err != nil {
+		t.Fatalf("AuthorizeURL: %v", err)
+	}
+	parsed, err := url.Parse(authURL)
+	if err != nil {
+		t.Fatalf("parse authURL: %v", err)
+	}
+	h.setNonce(parsed.Query().Get("nonce"))
+
+	return oauth.Exchange(context.Background(), "microsoft", h.expectedCode, stateToken, stateToken)
+}
+
+// TestOAuth_MultiTenant_HappyPath verifies that a multi-tenant Microsoft
+// provider (discovery returns the "{tenantid}" placeholder, id_token carries
+// a tenant-UUID issuer) completes the full Exchange flow and yields a
+// Principal. This pins down the intended happy path end-to-end.
+func TestOAuth_MultiTenant_HappyPath(t *testing.T) {
+	tokenIssuer := "https://login.microsoftonline.com/9188040d-6c67-4c5b-b112-36a304b66dad/v2.0"
+	h := newFakeMultiTenantHarness(t, tokenIssuer)
+
+	principal, payload, err := runMultiTenantExchange(t, h)
+	if err != nil {
+		t.Fatalf("Exchange: %v", err)
+	}
+	if principal.Issuer != tokenIssuer {
+		t.Errorf("Principal.Issuer = %q, want %q", principal.Issuer, tokenIssuer)
+	}
+	if principal.Subject != "ms-sub-123" {
+		t.Errorf("Principal.Subject = %q, want %q", principal.Subject, "ms-sub-123")
+	}
+	if principal.Email != "user@example.com" {
+		t.Errorf("Principal.Email = %q, want %q", principal.Email, "user@example.com")
+	}
+	if payload.ReturnPath != "/profile" {
+		t.Errorf("payload.ReturnPath = %q, want /profile", payload.ReturnPath)
+	}
+}
+
+// TestOAuth_MultiTenant_EvilHostRejected ensures an id_token whose issuer is
+// a completely different host (classic spoof vector once SkipIssuerCheck is
+// enabled) is rejected by the post-verify tenant-issuer check.
+func TestOAuth_MultiTenant_EvilHostRejected(t *testing.T) {
+	h := newFakeMultiTenantHarness(t, "https://evil.example.com/aaa/v2.0")
+
+	_, _, err := runMultiTenantExchange(t, h)
+	if err == nil {
+		t.Fatal("expected error for non-Microsoft issuer, got nil")
+	}
+	if !strings.Contains(err.Error(), "microsoft issuer not accepted") {
+		t.Errorf("error should mention issuer rejection, got: %v", err)
+	}
+}
+
+// TestOAuth_MultiTenant_NonUUIDTenantRejected ensures that even same-host
+// issuers are rejected when the tenant segment isn't a UUID. This is the
+// subtler spoof case: an attacker who controls any MS-hosted endpoint (or who
+// can forge the literal-"common"-in-iss case) must not slip past.
+func TestOAuth_MultiTenant_NonUUIDTenantRejected(t *testing.T) {
+	h := newFakeMultiTenantHarness(t, "https://login.microsoftonline.com/notauuid/v2.0")
+
+	_, _, err := runMultiTenantExchange(t, h)
+	if err == nil {
+		t.Fatal("expected error for non-UUID tenant issuer, got nil")
+	}
+	if !strings.Contains(err.Error(), "microsoft issuer not accepted") {
+		t.Errorf("error should mention issuer rejection, got: %v", err)
+	}
 }
