@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { CheckCircle2 } from 'lucide-react';
 import { ApiRequestError } from '@/lib/api';
 import {
@@ -38,7 +37,6 @@ const REDIRECT_DELAY_MS = 2000;
  *      Switch per provider), Revert + Confirm buttons, inline errors.
  */
 export default function OIDCConfigPage() {
-  const router = useRouter();
   const [status, setStatus] = useState<OIDCStatus | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
 
@@ -145,10 +143,16 @@ export default function OIDCConfigPage() {
         opt_out: optOut,
       });
       setStatus(updated);
+      // Clear the setup token from component state; it's single-use and
+      // there's no reason to keep it around after a successful confirm.
+      setSetupToken('');
       setIsSuccess(true);
-      // Brief success UI, then hand off to the login page.
+      // Brief success UI, then hand off to the login page. We use a hard
+      // navigation (not router.replace) so ClientLayout remounts and
+      // re-fetches oidc status — otherwise its cached `needs-setup`
+      // state bounces the user right back here.
       setTimeout(() => {
-        router.replace('/auth/login');
+        window.location.assign('/auth/login');
       }, REDIRECT_DELAY_MS);
     } catch (err) {
       if (err instanceof ApiRequestError) {
