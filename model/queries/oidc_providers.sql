@@ -45,3 +45,13 @@ RETURNING id, display_name, issuer_url, client_id, client_secret,
 -- Returns the number of rows deleted so the handler can distinguish
 -- 204 (deleted) from 404 (never existed).
 DELETE FROM oidc_providers WHERE id = $1;
+
+-- name: SetOIDCProviderEnabled :exec
+-- Narrow write used by /v1/oidc-config/confirm when the admin toggles a
+-- provider on/off from the summary page. Insert creates a row with just
+-- the enabled flag (all other override fields NULL → pass through to env
+-- / well-known); update leaves all other columns untouched so the row's
+-- existing overrides survive a simple enable/disable.
+INSERT INTO oidc_providers (id, enabled)
+VALUES ($1, $2)
+ON CONFLICT (id) DO UPDATE SET enabled = EXCLUDED.enabled;

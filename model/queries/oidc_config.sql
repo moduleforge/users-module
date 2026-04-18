@@ -1,15 +1,14 @@
 -- name: GetOIDCConfig :one
-SELECT id, provider_enabled, opt_out, setup_token_hash, setup_token_created_at, saved_at
+SELECT id, opt_out, setup_token_hash, setup_token_created_at, saved_at
 FROM oidc_config
 WHERE id = 1;
 
 -- name: UpdateOIDCConfig :exec
--- Persist the operator's choices (called from POST /v1/oidc-config/confirm).
--- The singleton row is guaranteed to exist via the migration's seed INSERT,
--- so a plain UPDATE is sufficient — no UPSERT logic required.
+-- Persist the operator's opt-out choice (called from POST /v1/oidc-config/confirm).
+-- Per-provider enable flags live in the oidc_providers table and are
+-- upserted directly — no JSONB column on this singleton since 9.16.
 UPDATE oidc_config
-SET provider_enabled = $1,
-    opt_out = $2,
+SET opt_out = $1,
     saved_at = now()
 WHERE id = 1;
 

@@ -26,7 +26,7 @@ func (q *Queries) ClearSetupTokenHash(ctx context.Context) error {
 }
 
 const getOIDCConfig = `-- name: GetOIDCConfig :one
-SELECT id, provider_enabled, opt_out, setup_token_hash, setup_token_created_at, saved_at
+SELECT id, opt_out, setup_token_hash, setup_token_created_at, saved_at
 FROM oidc_config
 WHERE id = 1
 `
@@ -36,7 +36,6 @@ func (q *Queries) GetOIDCConfig(ctx context.Context) (OidcConfig, error) {
 	var i OidcConfig
 	err := row.Scan(
 		&i.ID,
-		&i.ProviderEnabled,
 		&i.OptOut,
 		&i.SetupTokenHash,
 		&i.SetupTokenCreatedAt,
@@ -61,21 +60,15 @@ func (q *Queries) SetSetupTokenHash(ctx context.Context, setupTokenHash pgtype.T
 
 const updateOIDCConfig = `-- name: UpdateOIDCConfig :exec
 UPDATE oidc_config
-SET provider_enabled = $1,
-    opt_out = $2,
+SET opt_out = $1,
     saved_at = now()
 WHERE id = 1
 `
 
-type UpdateOIDCConfigParams struct {
-	ProviderEnabled []byte `json:"provider_enabled"`
-	OptOut          bool   `json:"opt_out"`
-}
-
-// Persist the operator's choices (called from POST /v1/oidc-config/confirm).
-// The singleton row is guaranteed to exist via the migration's seed INSERT,
-// so a plain UPDATE is sufficient — no UPSERT logic required.
-func (q *Queries) UpdateOIDCConfig(ctx context.Context, arg UpdateOIDCConfigParams) error {
-	_, err := q.db.Exec(ctx, updateOIDCConfig, arg.ProviderEnabled, arg.OptOut)
+// Persist the operator's opt-out choice (called from POST /v1/oidc-config/confirm).
+// Per-provider enable flags live in the oidc_providers table and are
+// upserted directly — no JSONB column on this singleton since 9.16.
+func (q *Queries) UpdateOIDCConfig(ctx context.Context, optOut bool) error {
+	_, err := q.db.Exec(ctx, updateOIDCConfig, optOut)
 	return err
 }

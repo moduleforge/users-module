@@ -82,70 +82,45 @@ func TestDetermineBootState(t *testing.T) {
 			wantEnabledSet: []string{"microsoft"},
 		},
 		{
-			name: "DB overrides filter out working google, only broken microsoft remains -> InitFailed",
+			// 9.16: "Enabled" now comes from the merged view (caller
+			// populates ProviderInitView.Enabled), not from a separate
+			// DB override map. Pre-9.16 this case ran the overrides
+			// through DetermineBootState; post-9.16 the caller has
+			// already resolved them into each view's Enabled flag.
+			name: "google disabled + broken microsoft enabled -> InitFailed",
 			providers: []ProviderInitView{
-				{ID: "google", Configured: true, Enabled: true, InitOK: true},
+				{ID: "google", Configured: true, Enabled: false, InitOK: true},
 				{ID: "microsoft", Configured: true, Enabled: true, InitOK: false},
-			},
-			db: DBConfigView{
-				ProviderOverrides: map[string]bool{"google": false, "microsoft": true},
 			},
 			wantState:      BootStateInitFailed,
 			wantEnabledSet: []string{"microsoft"},
 		},
 		{
-			name: "DB overrides with everything off + opt_out true -> ConfirmedOptOut",
+			name: "everything disabled + opt_out true -> ConfirmedOptOut",
 			providers: []ProviderInitView{
-				{ID: "google", Configured: true, Enabled: true, InitOK: true},
+				{ID: "google", Configured: true, Enabled: false, InitOK: true},
 			},
-			db: DBConfigView{
-				ProviderOverrides: map[string]bool{"google": false},
-				OptOut:            true,
-			},
+			db:             DBConfigView{OptOut: true},
 			wantState:      BootStateConfirmedOptOut,
 			wantEnabledSet: []string{},
 		},
 		{
-			name: "DB override for a provider missing from env is ignored",
-			providers: []ProviderInitView{
-				{ID: "google", Configured: true, Enabled: true, InitOK: true},
-			},
-			db: DBConfigView{
-				// "microsoft" no longer in env, but DB remembers it; shouldn't
-				// affect the verdict either way.
-				ProviderOverrides: map[string]bool{"google": true, "microsoft": true},
-			},
-			wantState:      BootStateConfirmedOK,
-			wantEnabledSet: []string{"google"},
-		},
-		{
-			name: "DB override omits a provider the env configured -> default to enabled",
+			name: "two enabled + ok providers -> ConfirmedOK",
 			providers: []ProviderInitView{
 				{ID: "google", Configured: true, Enabled: true, InitOK: true},
 				{ID: "authelia", Configured: true, Enabled: true, InitOK: true},
-			},
-			db: DBConfigView{
-				// Operator toggled google explicitly; authelia never
-				// touched — leave it on. (This is the "add a new provider
-				// to .env without re-confirming" ergonomic we want.)
-				ProviderOverrides: map[string]bool{"google": true},
 			},
 			wantState:      BootStateConfirmedOK,
 			wantEnabledSet: []string{"authelia", "google"},
 		},
 		{
-			name: "all providers disabled via DB, opt_out false -> InitFailed (nothing initialized)",
+			name: "everything disabled + opt_out false -> InitFailed (limbo)",
 			providers: []ProviderInitView{
-				{ID: "google", Configured: true, Enabled: true, InitOK: true},
+				{ID: "google", Configured: true, Enabled: false, InitOK: true},
 			},
-			db: DBConfigView{
-				ProviderOverrides: map[string]bool{"google": false},
-				OptOut:            false,
-			},
-			// This is the edge case the user may hit if they disable
-			// everything without setting opt_out. No candidates were
-			// filtered out of env, but none made it past the override
-			// filter and opt_out isn't set — per algorithm, InitFailed.
+			// No candidates survive the enabled filter, but opt_out isn't
+			// set — caller must explicitly opt out before the app serves
+			// traffic. Per algorithm, InitFailed.
 			wantState:      BootStateInitFailed,
 			wantEnabledSet: []string{},
 		},

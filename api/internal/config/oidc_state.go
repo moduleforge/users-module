@@ -64,13 +64,11 @@ type ProviderInitView struct {
 // DBConfigView is the DetermineBootState-facing summary of the
 // oidc_config singleton row. Carried as a named struct so main.go can
 // hand-build one from the sqlc-generated OidcConfig without this package
-// having to depend on model/db.
+// having to depend on model/db. Per-provider enable flags live on the
+// oidc_providers table (since 9.16); the caller resolves them into
+// ProviderInitView.Enabled before calling DetermineBootState, so this
+// struct only carries the singleton-scope opt-out bit.
 type DBConfigView struct {
-	// ProviderOverrides holds the persisted per-provider enable toggles,
-	// e.g. {"google": true, "microsoft": false}. An empty map means "no DB
-	// override — use env defaults". Unknown keys (providers no longer in
-	// env) are ignored by downstream filtering.
-	ProviderOverrides map[string]bool
 	// OptOut captures the DB-persisted equivalent of NO_OIDC_ACCOUNTS,
 	// set by confirming an all-off configuration in the onboarding UI.
 	OptOut bool
@@ -87,22 +85,18 @@ type BootStateResult struct {
 }
 
 // DetermineBootState is the single source of truth for the onboarding
-// state machine. Inputs are already-loaded: the env-registry-derived
-// provider views (with InitOK populated from the OAuth registry), the DB
-// singleton row summary, and the NO_OIDC_ACCOUNTS env flag. The function
-// is pure — no I/O, no globals — so it's trivially unit-testable.
+// state machine. Inputs are already-loaded: provider views (each with
+// Configured / Enabled / InitOK pre-populated from the merge layer and
+// the OAuth registry), the DB singleton row summary, and the
+// NO_OIDC_ACCOUNTS env flag. The function is pure — no I/O, no globals —
+// so it's trivially unit-testable.
 //
-// INVARIANT (shared with filterRegistry in handlers/oidc_config.go):
-// absent = enabled by default; only an explicit `false` override
-// disables a provider. A partial overrides map must never silently
-// drop a provider the operator never toggled.
-//
-// Algorithm (mirrors the plan):
+// Algorithm (strict, Phase 9.10a; enable-source unified 9.16):
 //  1. Partition providers into "in-env" candidates.
-//  2. If DB overrides are non-empty, filter candidates to those marked
-//     true. Otherwise every candidate is enabled by default.
+//  2. Filter by p.Enabled (the merged view's effective enable flag;
+//     caller resolves env / oidc_providers.enabled before the call).
 //  3. Count InitOK among the enabled set.
-//  4. Branch (strict, Phase 9.10a):
+//  4. Branch:
 //     - no candidates → ConfirmedOptOut iff DB opt_out OR envFlag;
 //     else NoEnvNoFlag.
 //     - all enabled InitOK → ConfirmedOK.
@@ -110,8 +104,6 @@ type BootStateResult struct {
 //       fatal — operators must disable a broken provider explicitly
 //       via /confirm before the app will serve traffic).
 func DetermineBootState(providers []ProviderInitView, db DBConfigView, envNoOIDCAccounts bool) BootStateResult {
-	hasOverrides := len(db.ProviderOverrides) > 0
-
 	enabled := make([]string, 0, len(providers))
 	initOKCount := 0
 	candidateCount := 0
@@ -121,20 +113,7 @@ func DetermineBootState(providers []ProviderInitView, db DBConfigView, envNoOIDC
 			continue
 		}
 		candidateCount++
-
-		isEnabled := true
-		if hasOverrides {
-			// If the DB mentions this provider explicitly, honor its
-			// choice. If the DB omits it, fall back to "enabled" — the
-			// override map is a partial view (only providers the operator
-			// toggled), and the safer default is to keep known-configured
-			// providers on rather than silently disable them.
-			if v, ok := db.ProviderOverrides[p.ID]; ok {
-				isEnabled = v
-			}
-		}
-
-		if !isEnabled {
+		if !p.Enabled {
 			continue
 		}
 		enabled = append(enabled, p.ID)

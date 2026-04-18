@@ -65,6 +65,12 @@ type Querier interface {
 	SetAdmin(ctx context.Context, arg SetAdminParams) error
 	SetAppUserRoles(ctx context.Context, arg SetAppUserRolesParams) error
 	SetDefaultApp(ctx context.Context, arg SetDefaultAppParams) error
+	// Narrow write used by /v1/oidc-config/confirm when the admin toggles a
+	// provider on/off from the summary page. Insert creates a row with just
+	// the enabled flag (all other override fields NULL → pass through to env
+	// / well-known); update leaves all other columns untouched so the row's
+	// existing overrides survive a simple enable/disable.
+	SetOIDCProviderEnabled(ctx context.Context, arg SetOIDCProviderEnabledParams) error
 	// Install or refresh the active setup-token hash; called once per boot
 	// when the state is unconfirmed and no hash is already present.
 	SetSetupTokenHash(ctx context.Context, setupTokenHash pgtype.Text) error
@@ -72,10 +78,10 @@ type Querier interface {
 	UpdateApp(ctx context.Context, arg UpdateAppParams) error
 	UpdateCorporation(ctx context.Context, arg UpdateCorporationParams) error
 	UpdateNaturalPerson(ctx context.Context, arg UpdateNaturalPersonParams) error
-	// Persist the operator's choices (called from POST /v1/oidc-config/confirm).
-	// The singleton row is guaranteed to exist via the migration's seed INSERT,
-	// so a plain UPDATE is sufficient — no UPSERT logic required.
-	UpdateOIDCConfig(ctx context.Context, arg UpdateOIDCConfigParams) error
+	// Persist the operator's opt-out choice (called from POST /v1/oidc-config/confirm).
+	// Per-provider enable flags live in the oidc_providers table and are
+	// upserted directly — no JSONB column on this singleton since 9.16.
+	UpdateOIDCConfig(ctx context.Context, optOut bool) error
 	UpdateUser(ctx context.Context, arg UpdateUserParams) error
 	UpsertAuthLocal(ctx context.Context, arg UpsertAuthLocalParams) error
 	// Insert or replace a provider override row. NULL override fields mean

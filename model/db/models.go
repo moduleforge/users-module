@@ -95,7 +95,6 @@ type NaturalPerson struct {
 
 type OidcConfig struct {
 	ID                  int32              `json:"id"`
-	ProviderEnabled     []byte             `json:"provider_enabled"`
 	OptOut              bool               `json:"opt_out"`
 	SetupTokenHash      pgtype.Text        `json:"setup_token_hash"`
 	SetupTokenCreatedAt *time.Time         `json:"setup_token_created_at"`

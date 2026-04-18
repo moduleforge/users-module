@@ -22,12 +22,13 @@ import (
 // synchronized so tests can make assertions from arbitrary goroutines
 // (though in practice we stay on the test goroutine).
 type fakeQuerier struct {
-	mu  sync.Mutex
-	row db.OidcConfig
+	mu        sync.Mutex
+	row       db.OidcConfig
+	providers map[string]db.OidcProvider
 }
 
 func newFakeQuerier(initial db.OidcConfig) *fakeQuerier {
-	return &fakeQuerier{row: initial}
+	return &fakeQuerier{row: initial, providers: map[string]db.OidcProvider{}}
 }
 
 func (f *fakeQuerier) GetOIDCConfig(ctx context.Context) (db.OidcConfig, error) {
@@ -36,11 +37,10 @@ func (f *fakeQuerier) GetOIDCConfig(ctx context.Context) (db.OidcConfig, error) 
 	return f.row, nil
 }
 
-func (f *fakeQuerier) UpdateOIDCConfig(ctx context.Context, arg db.UpdateOIDCConfigParams) error {
+func (f *fakeQuerier) UpdateOIDCConfig(ctx context.Context, optOut bool) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.row.ProviderEnabled = append([]byte(nil), arg.ProviderEnabled...)
-	f.row.OptOut = arg.OptOut
+	f.row.OptOut = optOut
 	f.row.SavedAt = pgtype.Timestamptz{Time: time.Now(), Valid: true}
 	return nil
 }
@@ -60,6 +60,29 @@ func (f *fakeQuerier) ClearSetupTokenHash(ctx context.Context) error {
 	f.row.SetupTokenHash = pgtype.Text{}
 	f.row.SetupTokenCreatedAt = nil
 	return nil
+}
+
+func (f *fakeQuerier) SetOIDCProviderEnabled(ctx context.Context, arg db.SetOIDCProviderEnabledParams) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	existing, ok := f.providers[arg.ID]
+	if ok {
+		existing.Enabled = arg.Enabled
+		f.providers[arg.ID] = existing
+		return nil
+	}
+	f.providers[arg.ID] = db.OidcProvider{ID: arg.ID, Enabled: arg.Enabled}
+	return nil
+}
+
+func (f *fakeQuerier) ListOIDCProviders(ctx context.Context) ([]db.OidcProvider, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]db.OidcProvider, 0, len(f.providers))
+	for _, p := range f.providers {
+		out = append(out, p)
+	}
+	return out, nil
 }
 
 // newEmptyOAuth builds an OAuth with zero providers. That's enough for
@@ -193,43 +216,11 @@ func TestEnsureSetupToken_RotatesOnRestart(t *testing.T) {
 	}
 }
 
-// TestFilterRegistry_MissingMeansEnabled verifies the invariant that
-// absent-from-overrides = enabled by default. A partial overrides map
-// (e.g. only google mentioned) must not silently drop microsoft. Only
-// an explicit `false` disables.
-func TestFilterRegistry_MissingMeansEnabled(t *testing.T) {
-	reg := config.ProviderRegistry{
-		"google":    config.Provider{ID: "google"},
-		"microsoft": config.Provider{ID: "microsoft"},
-	}
-
-	t.Run("partial overrides keep missing provider enabled", func(t *testing.T) {
-		got := filterRegistry(reg, map[string]bool{"google": true})
-		if _, ok := got["google"]; !ok {
-			t.Errorf("google should be present (explicit true)")
-		}
-		if _, ok := got["microsoft"]; !ok {
-			t.Errorf("microsoft should be present (missing = enabled by default)")
-		}
-	})
-
-	t.Run("explicit false disables", func(t *testing.T) {
-		got := filterRegistry(reg, map[string]bool{"google": true, "microsoft": false})
-		if _, ok := got["google"]; !ok {
-			t.Errorf("google should be present")
-		}
-		if _, ok := got["microsoft"]; ok {
-			t.Errorf("microsoft should be absent (explicit false)")
-		}
-	})
-
-	t.Run("empty overrides keep all enabled", func(t *testing.T) {
-		got := filterRegistry(reg, map[string]bool{})
-		if len(got) != 2 {
-			t.Errorf("empty overrides: got %d entries, want 2", len(got))
-		}
-	})
-}
+// NOTE: filterRegistry was deleted in 9.16 when the per-provider
+// enabled flag moved to oidc_providers.enabled and the merge layer
+// became authoritative. The "absent = enabled by default" invariant
+// is now enforced by config.MergedEnabled / config.MergedRegistry
+// and covered by the merge-layer unit tests.
 
 // TestSetupToken_LoopbackOnly covers the response-gate: requests from
 // non-loopback RemoteAddr get 403 even if a token exists; loopback
@@ -466,6 +457,56 @@ func TestSaved_ReturnsLastPersisted(t *testing.T) {
 	}
 }
 
+// TestConfirm_WritesPerProviderEnabled_NotJSONB — regression for
+// Phase 9.16. Confirm must upsert oidc_providers.enabled per row (so
+// the summary page and edit modal see the same enabled flag) and must
+// not rely on the removed oidc_config.provider_enabled JSONB column.
+func TestConfirm_WritesPerProviderEnabled_NotJSONB(t *testing.T) {
+	h, fq := newHandler(t, db.OidcConfig{ID: 1})
+	token, err := h.EnsureSetupToken(context.Background())
+	if err != nil {
+		t.Fatalf("EnsureSetupToken: %v", err)
+	}
+	// Inject an env registry so Confirm has something to toggle.
+	h.deps.EnvRegistry = config.ProviderRegistry{
+		"google":    config.Provider{ID: "google"},
+		"microsoft": config.Provider{ID: "microsoft"},
+	}
+
+	body := confirmRequest{
+		SetupToken:       token,
+		EnabledProviders: []string{"google"},
+		OptOut:           false,
+	}
+	buf, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/v1/oidc-config/confirm", strings.NewReader(string(buf)))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	h.Confirm(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200, body=%s", rr.Code, rr.Body.String())
+	}
+
+	// oidc_providers rows exist with correct enabled flags.
+	fq.mu.Lock()
+	defer fq.mu.Unlock()
+	gp, ok := fq.providers["google"]
+	if !ok {
+		t.Fatalf("google row not written to oidc_providers")
+	}
+	if !gp.Enabled {
+		t.Errorf("google enabled: got false, want true")
+	}
+	mp, ok := fq.providers["microsoft"]
+	if !ok {
+		t.Fatalf("microsoft row not written to oidc_providers")
+	}
+	if mp.Enabled {
+		t.Errorf("microsoft enabled: got true, want false (not in enabled_providers list)")
+	}
+}
+
 // TestRequireOIDCConfirmed_Gates verifies the middleware returns 503
 // with the expected JSON payload when state is unconfirmed, and calls
 // through when confirmed. The status function is re-read on every
@@ -531,15 +572,15 @@ func TestConfirm_BadJSON(t *testing.T) {
 	}
 }
 
-// TestBuildOverrides_DropsUnknown covers the helper that filters the
-// submitted list against the env registry. Unknown IDs should be
+// TestNormalizeEnabledSet_DropsUnknown covers the helper that filters
+// the submitted list against the env registry. Unknown IDs should be
 // silently dropped, not stored in DB.
-func TestBuildOverrides_DropsUnknown(t *testing.T) {
+func TestNormalizeEnabledSet_DropsUnknown(t *testing.T) {
 	reg := config.ProviderRegistry{
 		"google":    config.Provider{ID: "google"},
 		"microsoft": config.Provider{ID: "microsoft"},
 	}
-	got := buildOverrides(reg, []string{"google", "not-a-provider"})
+	got := normalizeEnabledSet(reg, []string{"google", "not-a-provider"})
 	if !got["google"] {
 		t.Errorf("google should be true")
 	}
@@ -547,7 +588,7 @@ func TestBuildOverrides_DropsUnknown(t *testing.T) {
 		t.Errorf("microsoft should default to false")
 	}
 	if _, ok := got["not-a-provider"]; ok {
-		t.Errorf("unknown provider leaked into overrides")
+		t.Errorf("unknown provider leaked into enabled set")
 	}
 }
 
@@ -623,7 +664,7 @@ type erroringQuerier struct{}
 func (erroringQuerier) GetOIDCConfig(ctx context.Context) (db.OidcConfig, error) {
 	return db.OidcConfig{}, errors.New("boom")
 }
-func (erroringQuerier) UpdateOIDCConfig(ctx context.Context, _ db.UpdateOIDCConfigParams) error {
+func (erroringQuerier) UpdateOIDCConfig(ctx context.Context, _ bool) error {
 	return errors.New("boom")
 }
 func (erroringQuerier) SetSetupTokenHash(ctx context.Context, _ pgtype.Text) error {
@@ -631,4 +672,10 @@ func (erroringQuerier) SetSetupTokenHash(ctx context.Context, _ pgtype.Text) err
 }
 func (erroringQuerier) ClearSetupTokenHash(ctx context.Context) error {
 	return errors.New("boom")
+}
+func (erroringQuerier) SetOIDCProviderEnabled(ctx context.Context, _ db.SetOIDCProviderEnabledParams) error {
+	return errors.New("boom")
+}
+func (erroringQuerier) ListOIDCProviders(ctx context.Context) ([]db.OidcProvider, error) {
+	return nil, errors.New("boom")
 }

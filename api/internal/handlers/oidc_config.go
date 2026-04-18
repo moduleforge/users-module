@@ -31,9 +31,23 @@ import (
 // which satisfies this interface by virtue of sqlc's emit_interface.
 type OIDCConfigQuerier interface {
 	GetOIDCConfig(ctx context.Context) (db.OidcConfig, error)
-	UpdateOIDCConfig(ctx context.Context, arg db.UpdateOIDCConfigParams) error
+	// UpdateOIDCConfig persists the singleton's opt-out flag. The
+	// per-provider enabled JSONB that used to live here was removed in
+	// 9.16 — see SetOIDCProviderEnabled on the providers querier.
+	UpdateOIDCConfig(ctx context.Context, optOut bool) error
 	SetSetupTokenHash(ctx context.Context, setupTokenHash pgtype.Text) error
 	ClearSetupTokenHash(ctx context.Context) error
+	// SetOIDCProviderEnabled is the per-provider toggle path — canonical
+	// source of "enabled" since 9.16. Creates a row with only the
+	// enabled flag set if none exists; otherwise updates only that
+	// column. Lives on this interface (rather than a separate one) so
+	// Confirm can write enabled + opt-out in a single dep.
+	SetOIDCProviderEnabled(ctx context.Context, arg db.SetOIDCProviderEnabledParams) error
+	// ListOIDCProviders is consumed via config.LoadMergedProviders to
+	// build the merged registry read by buildProviderViews and
+	// buildStatusProviders (since 9.16 the enabled flag lives on each
+	// row, so status needs per-row visibility).
+	ListOIDCProviders(ctx context.Context) ([]db.OidcProvider, error)
 }
 
 // OIDCConfigDeps is the set of collaborators the OIDC config handler
@@ -79,20 +93,21 @@ func NewOIDCConfigHandler(deps OIDCConfigDeps) *OIDCConfigHandler {
 	return &OIDCConfigHandler{deps: deps}
 }
 
-// RefreshState reads the oidc_config row and recomputes BootState.
-// Called once at boot and once after every successful confirm; any
-// future trigger that changes the effective state should call this too.
+// RefreshState reads the oidc_config row, merges env + DB provider
+// rows, and recomputes BootState. Called once at boot and once after
+// every state-changing request (confirm, provider CRUD).
 func (h *OIDCConfigHandler) RefreshState(ctx context.Context) error {
 	row, err := h.deps.Queries.GetOIDCConfig(ctx)
 	if err != nil {
 		return err
 	}
-	dbView, err := decodeDBView(row)
+	merged, err := config.LoadMergedProviders(ctx, h.deps.EnvRegistry, h.deps.Queries)
 	if err != nil {
 		return err
 	}
+	dbView := config.DBConfigView{OptOut: row.OptOut}
 	state := config.DetermineBootState(
-		h.buildProviderViews(dbView.ProviderOverrides),
+		h.buildProviderViews(merged),
 		dbView,
 		h.deps.EnvNoOIDCEnv,
 	)
@@ -103,34 +118,20 @@ func (h *OIDCConfigHandler) RefreshState(ctx context.Context) error {
 	return nil
 }
 
-// ApplyDBOverridesToOAuth re-runs OAuth.Rebuild when the DB-persisted
-// provider_enabled overrides filter out env-configured providers (e.g.
-// on a boot that inherited a prior "microsoft off" override). After
-// this call oauth.EnabledProviders() matches the DB-intended enabled
-// set. Safe to call even when no overrides exist — in that case it's
-// a no-op (the current OAuth already reflects the full env registry).
+// ApplyDBOverridesToOAuth re-runs OAuth.Rebuild using the merged
+// registry so DB-layer disables / overrides (e.g. "microsoft off" saved
+// last session) are reflected in OAuth.EnabledProviders() on first
+// serve. A no-op when no DB rows disagree with env.
 //
-// Call once after RefreshState at boot; Confirm() handles the runtime
-// case inline.
+// Call once after RefreshState at boot; Confirm and the providers
+// handler handle the runtime case inline.
 func (h *OIDCConfigHandler) ApplyDBOverridesToOAuth(ctx context.Context) error {
-	h.mu.RLock()
-	rawOverrides := h.cachedDB.ProviderEnabled
-	h.mu.RUnlock()
-
-	overrides := h.overridesOrEmpty(ctx, rawOverrides)
-	if len(overrides) == 0 {
-		// Malformed / missing overrides: leave OAuth alone. The plan
-		// treats empty overrides as "no DB opinion" → use full env.
-		return nil
+	merged, err := config.LoadMergedProviders(ctx, h.deps.EnvRegistry, h.deps.Queries)
+	if err != nil {
+		return err
 	}
-
-	// Only rebuild if overrides actually change the set. A trivial
-	// "all true" override matches the full registry, so skip.
-	filtered := filterRegistry(h.deps.EnvRegistry, overrides)
-	if len(filtered) == len(h.deps.EnvRegistry) {
-		return nil
-	}
-	if err := h.deps.OAuth.Rebuild(ctx, filtered); err != nil {
+	registry := config.MergedRegistry(merged)
+	if err := h.deps.OAuth.Rebuild(ctx, registry); err != nil {
 		return err
 	}
 	// The rebuild may have flipped InitOK for the retained set; refresh.
@@ -181,8 +182,13 @@ func (h *OIDCConfigHandler) Status(w http.ResponseWriter, r *http.Request) {
 	row := h.cachedDB
 	h.mu.RUnlock()
 
-	overrides := h.overridesOrEmpty(r.Context(), row.ProviderEnabled)
-	providers := h.buildStatusProviders(overrides)
+	merged, err := config.LoadMergedProviders(r.Context(), h.deps.EnvRegistry, h.deps.Queries)
+	if err != nil {
+		slog.ErrorContext(r.Context(), "oidc status: load merged providers", "error", err)
+		server.Error(w, http.StatusInternalServerError, "internal_error", "failed to load provider state")
+		return
+	}
+	providers := h.buildStatusProviders(merged)
 
 	resp := statusResponse{
 		State:             string(boot.State),
@@ -301,33 +307,44 @@ func (h *OIDCConfigHandler) Confirm(w http.ResponseWriter, r *http.Request) {
 	// will 503 their next /v1/* request. Recovery requires a process
 	// restart so EnsureSetupToken can mint a fresh banner token.
 
-	// Compute the provider_enabled override map. If the caller submits
-	// an empty enabled_providers array we honor opt_out semantics — all
-	// known providers marked off + opt_out=true unless explicitly set.
-	overrides := buildOverrides(h.deps.EnvRegistry, req.EnabledProviders)
-	optOut := req.OptOut || len(req.EnabledProviders) == 0
+	// Normalize the submitted enabled list: lowercase, drop unknown IDs,
+	// dedupe. Empty list implies opt-out semantics (no OIDC available).
+	wanted := normalizeEnabledSet(h.deps.EnvRegistry, req.EnabledProviders)
+	optOut := req.OptOut || len(wanted) == 0
 
-	overrideJSON, err := json.Marshal(overrides)
-	if err != nil {
-		slog.ErrorContext(r.Context(), "oidc confirm: marshal overrides", "error", err)
-		server.Error(w, http.StatusInternalServerError, "internal_error", "failed to persist configuration")
-		return
+	// Persist per-provider enabled flags on oidc_providers (the canonical
+	// source of truth since 9.16). For each env-known provider, write the
+	// toggle value; SetOIDCProviderEnabled is an upsert that leaves other
+	// columns untouched so field-level overrides from the Edit modal are
+	// preserved.
+	for id := range h.deps.EnvRegistry {
+		if err := h.deps.Queries.SetOIDCProviderEnabled(r.Context(), db.SetOIDCProviderEnabledParams{
+			ID:      id,
+			Enabled: wanted[id],
+		}); err != nil {
+			slog.ErrorContext(r.Context(), "oidc confirm: set provider enabled", "error", err, "provider", id)
+			server.Error(w, http.StatusInternalServerError, "internal_error", "failed to persist configuration")
+			return
+		}
 	}
 
-	if err := h.deps.Queries.UpdateOIDCConfig(r.Context(), db.UpdateOIDCConfigParams{
-		ProviderEnabled: overrideJSON,
-		OptOut:          optOut,
-	}); err != nil {
+	if err := h.deps.Queries.UpdateOIDCConfig(r.Context(), optOut); err != nil {
 		slog.ErrorContext(r.Context(), "oidc confirm: db update", "error", err)
 		server.Error(w, http.StatusInternalServerError, "internal_error", "failed to persist configuration")
 		return
 	}
 
-	// Rebuild OAuth with the filtered registry so providers the operator
-	// just toggled off stop appearing in /v1/auth/providers and (if a
-	// previously-failed provider was toggled on) its init gets retried.
-	filtered := filterRegistry(h.deps.EnvRegistry, overrides)
-	if err := h.deps.OAuth.Rebuild(r.Context(), filtered); err != nil {
+	// Rebuild OAuth with the MERGED registry (env + DB per-row overrides).
+	// Critical: using the env-only registry here was the pre-9.16 bug
+	// that made an admin's just-saved provider changes disappear when
+	// they hit Confirm.
+	merged, err := config.LoadMergedProviders(r.Context(), h.deps.EnvRegistry, h.deps.Queries)
+	if err != nil {
+		slog.ErrorContext(r.Context(), "oidc confirm: load merged providers", "error", err)
+		server.Error(w, http.StatusInternalServerError, "internal_error", "failed to reload providers")
+		return
+	}
+	if err := h.deps.OAuth.Rebuild(r.Context(), config.MergedRegistry(merged)); err != nil {
 		slog.ErrorContext(r.Context(), "oidc confirm: rebuild oauth", "error", err)
 		server.Error(w, http.StatusInternalServerError, "internal_error", "failed to reload providers")
 		return
@@ -403,16 +420,26 @@ type savedResponse struct {
 }
 
 // Saved handles GET /v1/oidc-config/saved. Powers the GUI "revert"
-// button — returns the last-saved DB snapshot so the client can
-// re-populate the toggle state without re-posting.
+// button — returns the current per-provider enabled state aggregated
+// from oidc_providers rows so the client can restore toggle state
+// without re-posting.
 func (h *OIDCConfigHandler) Saved(w http.ResponseWriter, r *http.Request) {
 	h.mu.RLock()
 	row := h.cachedDB
 	h.mu.RUnlock()
 
-	overrides := h.overridesOrEmpty(r.Context(), row.ProviderEnabled)
+	merged, err := config.LoadMergedProviders(r.Context(), h.deps.EnvRegistry, h.deps.Queries)
+	if err != nil {
+		slog.ErrorContext(r.Context(), "oidc saved: load merged providers", "error", err)
+		server.Error(w, http.StatusInternalServerError, "internal_error", "failed to load saved config")
+		return
+	}
+	enabled := make(map[string]bool, len(merged))
+	for id, m := range merged {
+		enabled[id] = m.MergedEnabled()
+	}
 	resp := savedResponse{
-		EnabledProviders: overrides,
+		EnabledProviders: enabled,
 		OptOut:           row.OptOut,
 	}
 	if row.SavedAt.Valid {
@@ -497,107 +524,41 @@ func (h *OIDCConfigHandler) EnsureSetupToken(ctx context.Context) (string, error
 
 // ----- Helpers --------------------------------------------------
 
-// decodeDBView translates a sqlc OidcConfig row into the
-// config.DBConfigView shape DetermineBootState expects. Malformed
-// JSONB is treated as "no overrides" — the safer default than
-// crashing.
-func decodeDBView(row db.OidcConfig) (config.DBConfigView, error) {
-	overrides, err := parseProviderOverrides(row.ProviderEnabled)
-	if err != nil {
-		return config.DBConfigView{}, err
-	}
-	return config.DBConfigView{
-		ProviderOverrides: overrides,
-		OptOut:            row.OptOut,
-	}, nil
-}
-
-// parseProviderOverrides decodes the provider_enabled JSONB column.
-// An empty / NULL / malformed value yields an empty map (non-error)
-// so boot keeps going; callers treating that as "no overrides" is the
-// correct fallback.
-func parseProviderOverrides(raw []byte) (map[string]bool, error) {
-	if len(raw) == 0 {
-		return map[string]bool{}, nil
-	}
-	var out map[string]bool
-	if err := json.Unmarshal(raw, &out); err != nil {
-		return map[string]bool{}, err
-	}
-	if out == nil {
-		out = map[string]bool{}
-	}
-	return out, nil
-}
-
-// overridesOrEmpty is the non-fatal wrapper around parseProviderOverrides
-// used by request handlers. A parse failure is logged at Warn level with
-// a truncated preview of the raw value so operators can diagnose a
-// corrupt provider_enabled JSONB payload without chasing silent empty
-// maps, and the empty-map fallback keeps the request path working.
-func (h *OIDCConfigHandler) overridesOrEmpty(ctx context.Context, raw []byte) map[string]bool {
-	overrides, err := parseProviderOverrides(raw)
-	if err != nil {
-		slog.WarnContext(ctx, "oidc config: failed to parse provider_enabled JSONB; falling back to empty overrides",
-			"provider_overrides_parse_failed", true,
-			"error", err,
-			"raw_preview", rawPreview(raw, 128),
-		)
-	}
-	return overrides
-}
-
-// rawPreview returns up to maxLen bytes of raw as a string suitable for
-// structured logging; longer payloads are truncated with a trailing
-// ellipsis so a pathological JSONB blob doesn't flood the log.
-func rawPreview(raw []byte, maxLen int) string {
-	if len(raw) <= maxLen {
-		return string(raw)
-	}
-	return string(raw[:maxLen]) + "..."
-}
-
-// buildProviderViews turns the env-registry + OAuth init state into
-// the ProviderInitView slice DetermineBootState consumes. Takes the
-// DB overrides as input so Enabled reflects the resolved (post-filter)
-// value, consistent with what the onboarding UI shows.
-func (h *OIDCConfigHandler) buildProviderViews(overrides map[string]bool) []config.ProviderInitView {
+// buildProviderViews turns the merged-registry view into the
+// ProviderInitView slice DetermineBootState consumes. Enabled is read
+// from each provider's MergedEnabled() — which consults
+// oidc_providers.enabled (the 9.16 canonical source of truth).
+func (h *OIDCConfigHandler) buildProviderViews(merged map[string]*config.MergedProvider) []config.ProviderInitView {
 	all := h.deps.OAuth.AllProviders()
-	out := make([]config.ProviderInitView, 0, len(h.deps.EnvRegistry))
-
-	// Iterate the env registry (source of truth for "configured") and
-	// cross-reference OAuth.AllProviders for InitOK.
 	initByID := make(map[string]bool, len(all))
 	for _, s := range all {
 		initByID[s.ID] = s.InitOK
 	}
 
+	out := make([]config.ProviderInitView, 0, len(h.deps.EnvRegistry))
 	for id := range h.deps.EnvRegistry {
-		v := config.ProviderInitView{
+		enabled := true
+		if m, ok := merged[id]; ok {
+			enabled = m.MergedEnabled()
+		}
+		out = append(out, config.ProviderInitView{
 			ID:         id,
 			Configured: true,
-			Enabled:    true,
+			Enabled:    enabled,
 			InitOK:     initByID[id],
-		}
-		if len(overrides) > 0 {
-			if sel, ok := overrides[id]; ok {
-				v.Enabled = sel
-			}
-		}
-		out = append(out, v)
+		})
 	}
 	return out
 }
 
 // buildStatusProviders renders the provider list for the /status
 // response. Combines registry metadata (display name) with the
-// OAuth-observed InitOK/Err and the resolved enabled flag. Sorted by
+// OAuth-observed InitOK/Err and the merged enabled flag. Sorted by
 // ID for deterministic output.
-func (h *OIDCConfigHandler) buildStatusProviders(overrides map[string]bool) []statusProvider {
+func (h *OIDCConfigHandler) buildStatusProviders(merged map[string]*config.MergedProvider) []statusProvider {
 	all := h.deps.OAuth.AllProviders()
 	out := make([]statusProvider, 0, len(h.deps.EnvRegistry))
 
-	// Pre-index by ID so we can surface per-provider Err.
 	byID := make(map[string]*auth.ProviderState, len(all))
 	for _, s := range all {
 		byID[s.ID] = s
@@ -607,10 +568,8 @@ func (h *OIDCConfigHandler) buildStatusProviders(overrides map[string]bool) []st
 	for _, id := range ids {
 		p := h.deps.EnvRegistry[id]
 		enabled := true
-		if len(overrides) > 0 {
-			if v, ok := overrides[id]; ok {
-				enabled = v
-			}
+		if m, ok := merged[id]; ok {
+			enabled = m.MergedEnabled()
 		}
 		sp := statusProvider{
 			ID:          id,
@@ -632,13 +591,12 @@ func (h *OIDCConfigHandler) buildStatusProviders(overrides map[string]bool) []st
 	return out
 }
 
-// buildOverrides computes the provider_enabled JSONB contents from the
-// submitted enabled list. The output includes every provider in the
-// env registry (false for omitted IDs) so the DB row is a complete
-// picture, not a delta — simpler to reason about on subsequent reads.
-// Providers submitted that aren't in the env registry are silently
-// dropped.
-func buildOverrides(registry config.ProviderRegistry, enabled []string) map[string]bool {
+// normalizeEnabledSet returns the set of env-known provider IDs the
+// caller asked to enable. Unknown IDs are silently dropped; case
+// and whitespace are normalized so "Google " works the same as
+// "google". The returned map is complete across the env registry —
+// absent IDs get false.
+func normalizeEnabledSet(registry config.ProviderRegistry, enabled []string) map[string]bool {
 	out := make(map[string]bool, len(registry))
 	for id := range registry {
 		out[id] = false
@@ -649,26 +607,6 @@ func buildOverrides(registry config.ProviderRegistry, enabled []string) map[stri
 			continue
 		}
 		out[id] = true
-	}
-	return out
-}
-
-// filterRegistry returns a new ProviderRegistry containing the
-// entries that should be active per DB overrides.
-//
-// INVARIANT: absent = enabled by default; only an explicit `false`
-// override disables a provider. This matches DetermineBootState so a
-// partial overrides map (e.g. only google mentioned) does not silently
-// drop microsoft. The original registry is not mutated.
-func filterRegistry(registry config.ProviderRegistry, overrides map[string]bool) config.ProviderRegistry {
-	out := make(config.ProviderRegistry, len(registry))
-	for id, p := range registry {
-		if v, ok := overrides[id]; ok && !v {
-			// Explicit false → disabled.
-			continue
-		}
-		// Either no override for this id (default on) or override is true.
-		out[id] = p
 	}
 	return out
 }

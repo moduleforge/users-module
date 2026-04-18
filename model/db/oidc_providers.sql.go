@@ -92,6 +92,27 @@ func (q *Queries) ListOIDCProviders(ctx context.Context) ([]OidcProvider, error)
 	return items, nil
 }
 
+const setOIDCProviderEnabled = `-- name: SetOIDCProviderEnabled :exec
+INSERT INTO oidc_providers (id, enabled)
+VALUES ($1, $2)
+ON CONFLICT (id) DO UPDATE SET enabled = EXCLUDED.enabled
+`
+
+type SetOIDCProviderEnabledParams struct {
+	ID      string `json:"id"`
+	Enabled bool   `json:"enabled"`
+}
+
+// Narrow write used by /v1/oidc-config/confirm when the admin toggles a
+// provider on/off from the summary page. Insert creates a row with just
+// the enabled flag (all other override fields NULL → pass through to env
+// / well-known); update leaves all other columns untouched so the row's
+// existing overrides survive a simple enable/disable.
+func (q *Queries) SetOIDCProviderEnabled(ctx context.Context, arg SetOIDCProviderEnabledParams) error {
+	_, err := q.db.Exec(ctx, setOIDCProviderEnabled, arg.ID, arg.Enabled)
+	return err
+}
+
 const upsertOIDCProvider = `-- name: UpsertOIDCProvider :one
 INSERT INTO oidc_providers (
     id, display_name, issuer_url, client_id, client_secret,
