@@ -487,6 +487,83 @@ func TestProviders_Auth_SetupToken_Succeeds(t *testing.T) {
 	}
 }
 
+// TestProviders_Auth_SetupTokenHeader_AuthorizesGetAndDelete — GET
+// and DELETE have no body to carry a setup_token, so the
+// X-Setup-Token header fallback is required for token-mode admins
+// (first-time setup) to reach those endpoints.
+func TestProviders_Auth_SetupTokenHeader_AuthorizesGetAndDelete(t *testing.T) {
+	fp := newFakeProvidersQuerier()
+	fp.rows["keycloak"] = db.OidcProvider{
+		ID:           "keycloak",
+		ClientID:     pgtype.Text{String: "c", Valid: true},
+		ClientSecret: pgtype.Text{String: "s", Valid: true},
+		IssuerUrl:    pgtype.Text{String: "https://kc.example.com/realms/main", Valid: true},
+		ClaimStyle:   pgtype.Text{String: "keycloak", Valid: true},
+		Enabled:      true,
+	}
+	fq := newFakeQuerier(db.OidcConfig{ID: 1})
+	confirmer := NewOIDCConfigHandler(OIDCConfigDeps{
+		Queries:      fq,
+		OAuth:        newEmptyOAuth(t),
+		EnvRegistry:  config.ProviderRegistry{},
+		TokenDisplay: config.TokenDisplayBoth,
+		AdminChecker: func(r *http.Request) (bool, error) { return false, nil },
+	})
+	if err := confirmer.RefreshState(context.Background()); err != nil {
+		t.Fatalf("RefreshState: %v", err)
+	}
+	token, err := confirmer.EnsureSetupToken(context.Background())
+	if err != nil || token == "" {
+		t.Fatalf("EnsureSetupToken: err=%v token=%q", err, token)
+	}
+	h := NewProvidersHandler(ProvidersDeps{
+		Queries:      fp,
+		EnvRegistry:  config.ProviderRegistry{},
+		OAuth:        confirmer.deps.OAuth,
+		RedirectBase: "http://localhost:8080",
+		Confirmer:    confirmer,
+	})
+
+	r := chi.NewRouter()
+	r.Get("/v1/oidc-config/providers/{id}", h.Get)
+	r.Delete("/v1/oidc-config/providers/{id}", h.Revert)
+
+	// GET with valid header → 200.
+	req := httptest.NewRequest(http.MethodGet, "/v1/oidc-config/providers/keycloak", nil)
+	req.Header.Set("X-Setup-Token", token)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("GET with header: got %d, want 200, body=%s", rr.Code, rr.Body.String())
+	}
+
+	// GET with wrong header → 401.
+	req = httptest.NewRequest(http.MethodGet, "/v1/oidc-config/providers/keycloak", nil)
+	req.Header.Set("X-Setup-Token", "wrong-"+token)
+	rr = httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("GET with bad header: got %d, want 401", rr.Code)
+	}
+
+	// GET with no auth at all → 401.
+	req = httptest.NewRequest(http.MethodGet, "/v1/oidc-config/providers/keycloak", nil)
+	rr = httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("GET no auth: got %d, want 401", rr.Code)
+	}
+
+	// DELETE with valid header → 204.
+	req = httptest.NewRequest(http.MethodDelete, "/v1/oidc-config/providers/keycloak", nil)
+	req.Header.Set("X-Setup-Token", token)
+	rr = httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("DELETE with header: got %d, want 204, body=%s", rr.Code, rr.Body.String())
+	}
+}
+
 // TestProviders_AdminCheckerError_500 — an AdminChecker fault surfaces
 // as 500 (matches the /confirm semantics).
 func TestProviders_AdminCheckerError_500(t *testing.T) {

@@ -7,15 +7,12 @@ import { API_BASE_URL, ApiRequestError, type ApiErrorResponse } from '@/lib/api'
  * onboarding flow and the per-provider edit flow evolve independently.
  *
  * Auth: every method accepts `auth` — either an admin bearer token (sent
- * as Authorization: Bearer) or a setup token (placed in the JSON body
- * under `setup_token`). This mirrors the dual-auth pattern used by
+ * as Authorization: Bearer) or a setup token. The setup token is sent
+ * via the `X-Setup-Token` header on every method (covers GET and DELETE
+ * which have no body). PUT and POST additionally echo it into the body
+ * under `setup_token` for back-compat with the original shape, but the
+ * header alone is sufficient. Mirrors the dual-auth pattern used by
  * {@link postOIDCConfirm}.
- *
- * Note on the setup-token path: the API's GET and DELETE handlers do NOT
- * parse a request body for a setup token — they only authorize via admin
- * session. As a result, fetching and reverting a provider only work in
- * admin mode. Create (POST) and Update (PUT) accept `setup_token` in the
- * body and work for both paths.
  */
 
 export interface OIDCProviderView {
@@ -80,6 +77,11 @@ function authHeaders(auth: OIDCProviderAuth): Record<string, string> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if ('adminBearer' in auth && auth.adminBearer) {
     headers.Authorization = `Bearer ${auth.adminBearer}`;
+  } else if ('setupToken' in auth && auth.setupToken) {
+    // PUT/POST also put the token in the JSON body, but sending it in
+    // the header covers GET/DELETE (which have no body) with the same
+    // auth surface. The API accepts either.
+    headers['X-Setup-Token'] = auth.setupToken;
   }
   return headers;
 }
@@ -99,8 +101,8 @@ function bodyWithAuth(
 }
 
 /**
- * GET /v1/oidc-config/providers/:id. Admin auth only — the API's GET
- * handler does not read a setup_token from body/query/header.
+ * GET /v1/oidc-config/providers/:id. Accepts either admin bearer or a
+ * setup token (sent as X-Setup-Token header since GET has no body).
  */
 export async function fetchOIDCProvider(
   id: string,
@@ -194,9 +196,9 @@ export async function createOIDCProvider(
 }
 
 /**
- * DELETE /v1/oidc-config/providers/:id. Admin auth only — the API's
- * Revert handler does not read a setup_token from body/query/header.
- * Returns nothing (204 on success; 200 also acceptable per spec).
+ * DELETE /v1/oidc-config/providers/:id (Revert). Accepts admin bearer
+ * or a setup token (via X-Setup-Token header). Returns nothing
+ * (204 on success).
  */
 export async function revertOIDCProvider(
   id: string,

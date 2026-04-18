@@ -361,7 +361,10 @@ func (h *OIDCConfigHandler) Confirm(w http.ResponseWriter, r *http.Request) {
 
 // authorizeConfirm validates either an authenticated admin session OR
 // a valid setup token. Admin path is checked first so admins doing a
-// routine reconfigure don't have to fetch a fresh setup token.
+// routine reconfigure don't have to fetch a fresh setup token. If the
+// caller didn't submit a token via the JSON body (e.g. GET / DELETE
+// endpoints that have no body), the X-Setup-Token header is consulted
+// as a fallback so the same dual-auth model applies uniformly.
 // Returns:
 //   - (true, nil)  — authorized; proceed.
 //   - (false, nil) — neither path succeeded; 401.
@@ -376,11 +379,15 @@ func (h *OIDCConfigHandler) authorizeConfirm(r *http.Request, submitted string) 
 			return true, nil
 		}
 	}
-	if submitted != "" {
+	token := submitted
+	if token == "" {
+		token = r.Header.Get("X-Setup-Token")
+	}
+	if token != "" {
 		h.mu.RLock()
 		hash := h.cachedDB.SetupTokenHash
 		h.mu.RUnlock()
-		if hash.Valid && auth.VerifySetupToken(submitted, hash.String) {
+		if hash.Valid && auth.VerifySetupToken(token, hash.String) {
 			return true, nil
 		}
 	}
