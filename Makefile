@@ -69,7 +69,7 @@ test.all: test.unit test.integration ## Run all tests (unit + integration)
 # Dev orchestration
 # ---------------------------------------------------------------------------
 # `dev.start` runs the full stack in Docker containers:
-#   - Postgres, Authelia, MailHog (infrastructure)
+#   - Postgres, Authelia, Mailpit (infrastructure)
 #   - API server (Go, built from source, runs migrations on start)
 #   - GUI dev server (Next.js with hot-reload via volume mounts)
 #
@@ -129,7 +129,7 @@ _dev.urls:
 	@echo "  GUI (login here):   http://localhost:3000/auth/login"
 	@echo "  API:                http://localhost:8080"
 	@echo "  API health:         http://localhost:8080/healthz"
-	@echo "  MailHog (emails):   http://localhost:8025"
+	@echo "  Mailpit (emails):   http://localhost:8025"
 	@echo "  Authelia (OIDC):    http://localhost:9091"
 	@echo "  Postgres:           localhost:5432  (users/users)"
 	@echo ""
@@ -144,7 +144,7 @@ ifeq ($(DOCKER_COMPOSE),)
 	$(error docker compose (v2 plugin) or docker-compose (v1) is required but neither was found)
 endif
 	@$(DOCKER_COMPOSE) -f $(DOCKER_COMPOSE_FILE) down --remove-orphans
-	@docker rm -f users-module-postgres users-module-authelia users-module-mailhog users-module-api users-module-gui 2>/dev/null || true
+	@docker rm -f users-module-postgres users-module-authelia users-module-mailpit users-module-mailhog users-module-api users-module-gui 2>/dev/null || true
 
 # ---------------------------------------------------------------------------
 # Per-sub-project delegating targets (dot-namespaced)

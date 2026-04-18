@@ -272,20 +272,23 @@ export const api = {
         body: JSON.stringify(data),
       }),
 
+    // Paths here must match the chi routes in api/cmd/server/main.go.
+    // Phase 9.15 aligned these after the "Send code" button 404'd and
+    // forgot/reset password were similarly misrouted.
     forgotPassword: (data: ForgotPasswordRequest) =>
-      request<void>('/v1/auth/forgot-password', {
+      request<void>('/v1/auth/password-reset/request', {
         method: 'POST',
         body: JSON.stringify(data),
       }),
 
     resetPassword: (data: ResetPasswordRequest) =>
-      request<void>('/v1/auth/reset-password', {
+      request<void>('/v1/auth/password-reset/confirm', {
         method: 'POST',
         body: JSON.stringify(data),
       }),
 
     requestEmailCode: (data: EmailCodeRequest) =>
-      request<void>('/v1/auth/email-code', {
+      request<void>('/v1/auth/email-code/request', {
         method: 'POST',
         body: JSON.stringify(data),
       }),

@@ -61,7 +61,7 @@ storage:
 notifier:
   disable_startup_check: true
   smtp:
-    address: smtp://mailhog:1025
+    address: smtp://mailpit:1025
     sender: "Authelia <noreply@example.test>"
     disable_require_tls: true
     disable_html_emails: false

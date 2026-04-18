@@ -8,7 +8,7 @@
 # Services:
 #   - postgres : PostgreSQL 16 (data store)
 #   - authelia : OIDC provider (real OIDC, no mocks per dev/prod parity rule)
-#   - mailhog  : SMTP catcher for email-code auth flow testing
+#   - mailpit  : SMTP catcher for email-code auth flow testing (multi-arch)
 #   - api      : Go API server (builds from source, runs migrations on start)
 #   - gui      : Next.js dev server (hot-reload via volume mount)
 
@@ -76,17 +76,21 @@ services:
       retries: 6
       start_period: 15s
 
-  mailhog:
-    image: mailhog/mailhog:v1.0.1
-    container_name: users-module-mailhog
+  # MailHog (mailhog/mailhog:v1.0.1) is amd64-only and unmaintained
+  # since 2020; Mailpit is the maintained multi-arch successor with
+  # a compatible SMTP surface and a nicer web UI, both on the same
+  # default ports (1025 / 8025). Swapping is a drop-in.
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: users-module-mailpit
     restart: unless-stopped
     ports:
       - "${SMTP_PORT:-1025}:1025"
-      - "${MAILHOG_UI_PORT:-8025}:8025"
+      - "${MAILPIT_UI_PORT:-8025}:8025"
     networks:
       - users-module-net
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O-", "http://localhost:8025"]
+      test: ["CMD", "wget", "-q", "-O-", "http://localhost:8025/readyz"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -105,7 +109,7 @@ services:
     environment:
       # Override localhost refs with container service names.
       DB_URL: postgresql://${POSTGRES_USER:-users}:${POSTGRES_PASSWORD:-users}@postgres:5432/${POSTGRES_DB:-users}?sslmode=disable
-      SMTP_HOST: mailhog
+      SMTP_HOST: mailpit
       SERVER_ADDR: ":8080"
       # --- Auth providers (per-provider scheme, see api/internal/config/providers.go) ---
       # Authelia is the default local provider; Google is enabled at runtime
@@ -139,7 +143,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      mailhog:
+      mailpit:
         condition: service_healthy
 
   gui:

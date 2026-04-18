@@ -1,7 +1,7 @@
 # deploy/local
 
 Local development stack for the **users-module** project. Brings up real
-infrastructure (Postgres, Authelia OIDC, MailHog SMTP catcher) on a shared
+infrastructure (Postgres, Authelia OIDC, Mailpit SMTP catcher) on a shared
 Docker network so dev/prod parity is preserved — no mock OIDC.
 
 ## First-time setup
@@ -50,10 +50,10 @@ docker compose down -v
 |------------|-----------------------------|---------------------|--------------------------------------|
 | `postgres` | `postgres:16-alpine`        | `5432`              | App data store                       |
 | `authelia` | `authelia/authelia:4.38`    | `9091`              | OIDC provider (real, not mocked)     |
-| `mailhog`  | `mailhog/mailhog:v1.0.1`    | `1025` (SMTP), `8025` (UI) | Captures outbound mail (email-code auth flow) |
+| `mailpit`  | `axllent/mailpit:latest`    | `1025` (SMTP), `8025` (UI) | Captures outbound mail (email-code auth flow). Multi-arch (amd64/arm64). |
 
 All services join the `users-module-net` bridge network and resolve each other
-by service name (e.g. Authelia talks to MailHog at `mailhog:1025`).
+by service name (e.g. Authelia talks to Mailpit at `mailpit:1025`).
 
 ## Seeded users
 
@@ -132,11 +132,15 @@ Or via the running container:
 docker compose exec postgres psql -U users -d users -c 'SELECT 1'
 ```
 
-## MailHog
+## Mailpit
 
 Web UI: <http://localhost:8025>. SMTP listener on `localhost:1025`. Authelia
-is wired to send password-reset / OTP emails there; the API will use the same
-SMTP endpoint for the email-code auth flow once it lands (Phase 3+).
+is wired to send password-reset / OTP emails there; the API also uses the same
+SMTP endpoint for the email-code auth flow.
+
+Mailpit replaces MailHog (unmaintained since 2020, amd64-only) with a
+multi-arch successor. SMTP surface is unchanged; the web UI differs
+cosmetically but exposes the same "received mail" listing.
 
 ## What's *not* here
 
