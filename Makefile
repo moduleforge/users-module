@@ -155,6 +155,9 @@ endif
 	@$(DOCKER_COMPOSE) -f $(DOCKER_COMPOSE_FILE) down --remove-orphans
 	@docker rm -f users-module-postgres users-module-pgadmin users-module-authelia users-module-mailpit users-module-mailhog users-module-api users-module-gui 2>/dev/null || true
 
+.PHONY: dev.restart
+dev.restart: dev.stop dev.start ## Stop then re-bring up the full stack
+
 # ---------------------------------------------------------------------------
 # Per-sub-project delegating targets (dot-namespaced)
 # ---------------------------------------------------------------------------
