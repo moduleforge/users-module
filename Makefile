@@ -132,11 +132,20 @@ _dev.urls:
 	@echo "  Mailpit (emails):   http://localhost:8025"
 	@echo "  Authelia (OIDC):    http://localhost:9091"
 	@echo "  Postgres:           localhost:5432  (users/users)"
+	@echo "  pgAdmin (DB UI):    http://localhost:5050  (admin@example.test / admin)"
 	@echo ""
 	@echo "  First registered user automatically gets admin privileges."
 	@echo "  Ctrl-C to stop all containers."
 	@echo "========================================================================"
 	@echo ""
+
+.PHONY: dev.db-connect
+dev.db-connect: ## Open a psql shell against the running Postgres container
+ifeq ($(DOCKER_COMPOSE),)
+	$(error docker compose (v2 plugin) or docker-compose (v1) is required but neither was found)
+endif
+	@$(DOCKER_COMPOSE) -f $(DOCKER_COMPOSE_FILE) exec postgres \
+		psql -U $${POSTGRES_USER:-users} -d $${POSTGRES_DB:-users}
 
 .PHONY: dev.stop
 dev.stop: ## Tear down all dev containers
@@ -144,7 +153,7 @@ ifeq ($(DOCKER_COMPOSE),)
 	$(error docker compose (v2 plugin) or docker-compose (v1) is required but neither was found)
 endif
 	@$(DOCKER_COMPOSE) -f $(DOCKER_COMPOSE_FILE) down --remove-orphans
-	@docker rm -f users-module-postgres users-module-authelia users-module-mailpit users-module-mailhog users-module-api users-module-gui 2>/dev/null || true
+	@docker rm -f users-module-postgres users-module-pgadmin users-module-authelia users-module-mailpit users-module-mailhog users-module-api users-module-gui 2>/dev/null || true
 
 # ---------------------------------------------------------------------------
 # Per-sub-project delegating targets (dot-namespaced)

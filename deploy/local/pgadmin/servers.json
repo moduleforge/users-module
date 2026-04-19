@@ -1,0 +1,14 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "users-module (local)",
+      "Group": "Servers",
+      "Host": "postgres",
+      "Port": 5432,
+      "MaintenanceDB": "users",
+      "Username": "users",
+      "SSLMode": "disable",
+      "Comment": "Auto-registered by docker-compose. Password is 'users' (POSTGRES_PASSWORD in .env.example)."
+    }
+  }
+}

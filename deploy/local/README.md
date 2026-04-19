@@ -49,6 +49,7 @@ docker compose down -v
 | Service    | Image                       | Host port(s)        | Purpose                              |
 |------------|-----------------------------|---------------------|--------------------------------------|
 | `postgres` | `postgres:16-alpine`        | `5432`              | App data store                       |
+| `pgadmin`  | `dpage/pgadmin4:latest`     | `5050`              | Web UI for Postgres (auto-registers the `postgres` server via `pgadmin/servers.json`) |
 | `authelia` | `authelia/authelia:4.38`    | `9091`              | OIDC provider (real, not mocked)     |
 | `mailpit`  | `axllent/mailpit:latest`    | `1025` (SMTP), `8025` (UI) | Captures outbound mail (email-code auth flow). Multi-arch (amd64/arm64). |
 
@@ -131,6 +132,27 @@ Or via the running container:
 ```sh
 docker compose exec postgres psql -U users -d users -c 'SELECT 1'
 ```
+
+Or, from the monorepo root, via the convenience target:
+
+```sh
+make dev.db-connect
+```
+
+This execs `psql` inside the running `postgres` container — no local
+psql install required.
+
+## pgAdmin
+
+Web UI: <http://localhost:5050>. Log in with `admin@example.test` /
+`admin` (configurable via `PGADMIN_DEFAULT_EMAIL` and
+`PGADMIN_DEFAULT_PASSWORD` in `.env`). The `users-module (local)`
+server is pre-registered via `deploy/local/pgadmin/servers.json`; on
+first connect type the Postgres password `users` and pgAdmin stores
+it to its volume for future sessions.
+
+Desktop mode is enabled (`PGADMIN_CONFIG_SERVER_MODE=False`) so no
+master password prompt.
 
 ## Mailpit
 
