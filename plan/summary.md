@@ -11,6 +11,16 @@ Build a self-contained, reusable user-management module with three sub-projects 
 
 Cloud-agnostic; same binary/image runs in all three deploy modes. Drives parity through configuration, not code branches.
 
+## Dependencies on core-module
+
+As of the core-module extraction (see `../../core-module/plan/summary.md`):
+
+- **`model/`** — composes migrations at build time via `make compose`: copies `core-module/model/migrations/0000–0005` + users-module's own `0100+` into a single flat `schema/migrations/` dir (gitignored). sqlc reads the composed schema but only emits types for users-module-owned tables (`omit_unused_structs: true`). Entity/legal_entities/natural_persons/corporations/service_accounts types come from `github.com/moduleforge/core-model/db`.
+- **`api/`** — requires `github.com/moduleforge/core-api`. Mounts `corehttpapi.NewRouter(…)` under `/v1`, serving `/v1/entities/*` including `/v1/entities/self`. users-module's admin user-create opens its own pgx tx and delegates the entity chain to `coreSvcs.NaturalPerson.Create(ctx, coredb.New(tx), principal, input)`, then inserts the users + auth_local rows in the same tx. Principal identity is bridged via `auth.CorePrincipalAdapter`; audit writes go through the core services to users-module's `audit.Writer` (which satisfies `core-api/audit.Writer` structurally).
+- **`gui/`** — consumes `@moduleforge/core-gui` via yalc (`.yalc/@moduleforge/core-gui`). The profile page is a thin mount point around `<ProfileEditor>`; shadcn primitives `Button`, `Input`, `Label`, `Card`, `Badge`, `Alert` are imported from core-gui. Dialog/Separator/Switch/Table primitives remain local. Tailwind's `@source` directive in `globals.css` picks up core-gui's compiled `dist/`.
+
+Local dev: top-level `go.work` at `user-components/` stitches Go modules; `make link-core` from the repo root rebuilds core-gui and refreshes the yalc link.
+
 ## End-user features (from CLAUDE.md)
 
 - Self-service account creation, profile edit, "forgot password"
