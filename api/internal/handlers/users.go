@@ -78,38 +78,41 @@ func (h *UsersHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(r.Context())
 
-	qtx := h.q.WithTx(tx)
-	coreQtx := h.coreQ.WithTx(tx)
+	actor := localauth.MustFromContext(r.Context())
+	corePrin := coreservice.Principal{
+		UserID:   actor.UserID,
+		EntityID: actor.EntityID,
+		IsAdmin:  actor.IsAdmin,
+	}
 
-	entity, err := coreQtx.CreateEntity(r.Context(), "legal_entity")
+	coreQtx := coredb.New(tx)
+
+	// Delegate entity → legal_entity → natural_person creation to core service.
+	// The tx-scoped querier keeps all inserts in the same transaction.
+	_, entityUUID, err := h.coreSvcs.NaturalPerson.Create(
+		r.Context(),
+		coreQtx,
+		corePrin,
+		coreservice.CreateNaturalPersonInput{
+			GivenName:  req.GivenName,
+			FamilyName: req.FamilyName,
+		},
+	)
 	if err != nil {
-		slog.ErrorContext(r.Context(), "users.create: create entity", "error", err)
+		slog.ErrorContext(r.Context(), "users.create: create natural person chain", "error", err)
 		server.Error(w, http.StatusInternalServerError, "internal_error", "failed to create entity")
 		return
 	}
 
-	displayName := req.GivenName + " " + req.FamilyName
-	le, err := coreQtx.CreateLegalEntity(r.Context(), coredb.CreateLegalEntityParams{
-		EntityID:    entity.ID,
-		Kind:        "natural_person",
-		DisplayName: displayName,
-	})
+	// Resolve the entity internal ID needed for the users row foreign key.
+	entity, err := coreQtx.GetEntityByUUID(r.Context(), entityUUID)
 	if err != nil {
-		slog.ErrorContext(r.Context(), "users.create: create legal entity", "error", err)
-		server.Error(w, http.StatusInternalServerError, "internal_error", "failed to create legal entity")
+		slog.ErrorContext(r.Context(), "users.create: resolve entity", "error", err)
+		server.Error(w, http.StatusInternalServerError, "internal_error", "failed to resolve entity")
 		return
 	}
 
-	_, err = coreQtx.CreateNaturalPerson(r.Context(), coredb.CreateNaturalPersonParams{
-		LegalEntityID: le.ID,
-		GivenName:     pgtype.Text{String: req.GivenName, Valid: true},
-		FamilyName:    pgtype.Text{String: req.FamilyName, Valid: true},
-	})
-	if err != nil {
-		slog.ErrorContext(r.Context(), "users.create: create natural person", "error", err)
-		server.Error(w, http.StatusInternalServerError, "internal_error", "failed to create natural person")
-		return
-	}
+	qtx := h.q.WithTx(tx)
 
 	user, err := qtx.CreateUser(r.Context(), db.CreateUserParams{
 		EntityID: entity.ID,
