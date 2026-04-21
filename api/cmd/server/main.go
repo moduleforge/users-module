@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	corehttpapi "github.com/moduleforge/core-api/httpapi"
+	"github.com/moduleforge/core-api/fieldcrypto"
 	coreservice "github.com/moduleforge/core-api/service"
 	"github.com/moduleforge/core-api/display"
 	"github.com/moduleforge/users-module/api/internal/audit"
@@ -202,6 +203,14 @@ func main() {
 		}
 	}
 
+	// Initialize the field cipher for SSN/EIN encryption. Fail fast if the
+	// key env var is missing or malformed — the server cannot operate without it.
+	fieldCipher, err := fieldcrypto.NewFromEnv()
+	if err != nil {
+		slog.ErrorContext(ctx, "field cipher init failed", "error", err)
+		os.Exit(1)
+	}
+
 	auditWriter := audit.New(queries)
 
 	// Build display renderer registry. Core and tags builtins are registered here
@@ -211,7 +220,7 @@ func main() {
 
 	// Build core services and router. coreSvcs delegates entity CRUD to the
 	// service layer; coreRouter mounts /entities/* routes (including /self).
-	coreSvcs := coreservice.New(coredb.New(pool), auditWriter)
+	coreSvcs := coreservice.New(coredb.New(pool), auditWriter, fieldCipher)
 	coreRouter := corehttpapi.NewRouter(corehttpapi.Deps{
 		Pool:      pool,
 		Services:  coreSvcs,
