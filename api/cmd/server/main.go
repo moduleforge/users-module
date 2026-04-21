@@ -320,18 +320,18 @@ func main() {
 			r.Group(func(r chi.Router) {
 				r.Use(auth.RequireAdmin)
 
-				// User management.
-				r.Get("/users", usersHandler.List)
-				r.Post("/users", usersHandler.Create)
-				r.Get("/users/{uuid}", usersHandler.Get)
-				r.Put("/users/{uuid}", usersHandler.Update)
-				r.Delete("/users/{uuid}", usersHandler.Delete)
-				r.Post("/users/{uuid}/grant-admin", usersHandler.GrantAdmin)
-				r.Post("/users/{uuid}/revoke-admin", usersHandler.RevokeAdmin)
-				r.Post("/users/{uuid}/assume", assumeHandler.Assume)
+				// User account management.
+				r.Get("/user-accounts", usersHandler.List)
+				r.Post("/user-accounts", usersHandler.Create)
+				r.Get("/user-accounts/{uuid}", usersHandler.Get)
+				r.Put("/user-accounts/{uuid}", usersHandler.Update)
+				r.Delete("/user-accounts/{uuid}", usersHandler.Delete)
+				r.Post("/user-accounts/{uuid}/grant-admin", usersHandler.GrantAdmin)
+				r.Post("/user-accounts/{uuid}/revoke-admin", usersHandler.RevokeAdmin)
+				r.Post("/user-accounts/{uuid}/assume", assumeHandler.Assume)
 
 				// Audit log.
-				r.Get("/users/{uuid}/audit", auditHandler.ByUser)
+				r.Get("/user-accounts/{uuid}/audit", auditHandler.ByUser)
 				r.Get("/audit/{entity_uuid}", auditHandler.ByEntity)
 
 				// Apps (multi-tenancy).

@@ -2,30 +2,30 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { api, ApiRequestError, type User } from '@/lib/api';
+import { api, ApiRequestError, type UserAccount } from '@/lib/api';
 import { RequireAuth } from '@/components/require-auth';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ErrorMessage } from '@/components/error-message';
 import { Search } from 'lucide-react';
 import { Input, Badge } from '@moduleforge/core-gui';
 
-function UserListContent() {
-  const [users, setUsers] = useState<User[]>([]);
+function UserAccountListContent() {
+  const [userAccounts, setUserAccounts] = useState<UserAccount[]>([]);
   const [query, setQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const loadUsers = useCallback(async (q: string) => {
+  const loadUserAccounts = useCallback(async (q: string) => {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await api.users.list(q || undefined);
-      setUsers(response.users ?? []);
+      const response = await api.userAccounts.list(q || undefined);
+      setUserAccounts(response.user_accounts ?? []);
     } catch (err) {
       if (err instanceof ApiRequestError) {
         setError(err.message);
       } else {
-        setError('Failed to load users.');
+        setError('Failed to load user accounts.');
       }
     } finally {
       setIsLoading(false);
@@ -33,19 +33,19 @@ function UserListContent() {
   }, []);
 
   useEffect(() => {
-    void loadUsers('');
-  }, [loadUsers]);
+    void loadUserAccounts('');
+  }, [loadUserAccounts]);
 
   function handleSearch(e: React.FormEvent) {
     e.preventDefault();
-    void loadUsers(query);
+    void loadUserAccounts(query);
   }
 
   return (
     <div className="p-6">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Users</h1>
+          <h1 className="text-2xl font-semibold">User Accounts</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Manage user accounts
           </p>
@@ -81,35 +81,35 @@ function UserListContent() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {users.length === 0 ? (
+              {userAccounts.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
-                    No users found.
+                    No user accounts found.
                   </TableCell>
                 </TableRow>
               ) : (
-                users.map((user) => (
-                  <TableRow key={user.uuid}>
+                userAccounts.map((ua) => (
+                  <TableRow key={ua.uuid}>
                     <TableCell>
                       <Link
-                        href={`/admin/users/${user.uuid}`}
+                        href={`/admin/user-accounts/${ua.uuid}`}
                         className="font-medium hover:underline"
                       >
-                        {user.given_name} {user.family_name}
+                        {ua.given_name} {ua.family_name}
                       </Link>
                     </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {user.email}
+                      {ua.email}
                     </TableCell>
                     <TableCell>
-                      {user.is_admin ? (
+                      {ua.is_admin ? (
                         <Badge>Admin</Badge>
                       ) : (
                         <Badge variant="secondary">User</Badge>
                       )}
                     </TableCell>
                     <TableCell className="text-muted-foreground text-xs">
-                      {new Date(user.created_at).toLocaleDateString()}
+                      {new Date(ua.created_at).toLocaleDateString()}
                     </TableCell>
                   </TableRow>
                 ))
@@ -122,10 +122,10 @@ function UserListContent() {
   );
 }
 
-export default function AdminUsersPage() {
+export default function AdminUserAccountsPage() {
   return (
     <RequireAuth requireAdmin>
-      <UserListContent />
+      <UserAccountListContent />
     </RequireAuth>
   );
 }

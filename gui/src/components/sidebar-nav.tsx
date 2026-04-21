@@ -26,7 +26,7 @@ const navItems: NavItem[] = [
   { label: 'Profile', href: '/profile', icon: <User className="size-4" /> },
   {
     label: 'Users',
-    href: '/admin/users',
+    href: '/admin/user-accounts',
     icon: <Users className="size-4" />,
     adminOnly: true,
   },

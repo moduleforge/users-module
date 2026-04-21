@@ -3,7 +3,7 @@
 import { useEffect, useState, use } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { api, ApiRequestError, type User, type AuditEntry } from '@/lib/api';
+import { api, ApiRequestError, type UserAccount, type AuditEntry } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { RequireAuth } from '@/components/require-auth';
 import { Button, Input, Label, Card, CardContent, CardHeader, CardTitle, Badge } from '@moduleforge/core-gui';
@@ -11,10 +11,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { ErrorMessage } from '@/components/error-message';
 import { CheckCircle2, ArrowLeft, ExternalLink } from 'lucide-react';
 
-function UserDetailContent({ uuid }: { uuid: string }) {
+function UserAccountDetailContent({ uuid }: { uuid: string }) {
   const { setTokenAndUser, user: currentUser } = useAuth();
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
+  const [userAccount, setUserAccount] = useState<UserAccount | null>(null);
   const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([]);
   const [givenName, setGivenName] = useState('');
   const [familyName, setFamilyName] = useState('');
@@ -29,19 +29,19 @@ function UserDetailContent({ uuid }: { uuid: string }) {
     async function load() {
       setIsLoading(true);
       try {
-        const [userData, auditData] = await Promise.all([
-          api.users.get(uuid),
-          api.users.audit(uuid),
+        const [uaData, auditData] = await Promise.all([
+          api.userAccounts.get(uuid),
+          api.userAccounts.audit(uuid),
         ]);
-        setUser(userData);
-        setGivenName(userData.given_name);
-        setFamilyName(userData.family_name);
+        setUserAccount(uaData);
+        setGivenName(uaData.given_name);
+        setFamilyName(uaData.family_name);
         setAuditEntries(auditData.entries ?? []);
       } catch (err) {
         if (err instanceof ApiRequestError) {
           setError(err.message);
         } else {
-          setError('Failed to load user.');
+          setError('Failed to load user account.');
         }
       } finally {
         setIsLoading(false);
@@ -56,17 +56,17 @@ function UserDetailContent({ uuid }: { uuid: string }) {
     setSuccess(false);
     setIsSubmitting(true);
     try {
-      const updated = await api.users.update(uuid, {
+      const updated = await api.userAccounts.update(uuid, {
         given_name: givenName,
         family_name: familyName,
       });
-      setUser(updated);
+      setUserAccount(updated);
       setSuccess(true);
     } catch (err) {
       if (err instanceof ApiRequestError) {
         setError(err.message);
       } else {
-        setError('Failed to update user.');
+        setError('Failed to update user account.');
       }
     } finally {
       setIsSubmitting(false);
@@ -74,14 +74,14 @@ function UserDetailContent({ uuid }: { uuid: string }) {
   }
 
   async function handleToggleAdmin() {
-    if (!user) return;
+    if (!userAccount) return;
     setActionError(null);
     setIsActing(true);
     try {
-      const updated = user.is_admin
-        ? await api.users.revokeAdmin(uuid)
-        : await api.users.grantAdmin(uuid);
-      setUser(updated);
+      const updated = userAccount.is_admin
+        ? await api.userAccounts.revokeAdmin(uuid)
+        : await api.userAccounts.grantAdmin(uuid);
+      setUserAccount(updated);
     } catch (err) {
       if (err instanceof ApiRequestError) {
         setActionError(err.message);
@@ -97,7 +97,7 @@ function UserDetailContent({ uuid }: { uuid: string }) {
     setActionError(null);
     setIsActing(true);
     try {
-      const response = await api.users.assume(uuid);
+      const response = await api.userAccounts.assume(uuid);
       setTokenAndUser(response.token, response.user);
       router.push('/profile');
     } catch (err) {
@@ -115,10 +115,10 @@ function UserDetailContent({ uuid }: { uuid: string }) {
     return <p className="p-6 text-sm text-muted-foreground">Loading...</p>;
   }
 
-  if (!user) {
+  if (!userAccount) {
     return (
       <div className="p-6">
-        <ErrorMessage message={error ?? 'User not found.'} />
+        <ErrorMessage message={error ?? 'User account not found.'} />
       </div>
     );
   }
@@ -129,19 +129,19 @@ function UserDetailContent({ uuid }: { uuid: string }) {
     <div className="p-6 max-w-2xl">
       <div className="mb-6">
         <Link
-          href="/admin/users"
+          href="/admin/user-accounts"
           className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mb-4"
         >
           <ArrowLeft className="size-4" />
-          Back to users
+          Back to user accounts
         </Link>
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-semibold">
-            {user.given_name} {user.family_name}
+            {userAccount.given_name} {userAccount.family_name}
           </h1>
-          {user.is_admin && <Badge>Admin</Badge>}
+          {userAccount.is_admin && <Badge>Admin</Badge>}
         </div>
-        <p className="text-sm text-muted-foreground mt-1">{user.email}</p>
+        <p className="text-sm text-muted-foreground mt-1">{userAccount.email}</p>
       </div>
 
       <div className="flex flex-col gap-4">
@@ -197,11 +197,11 @@ function UserDetailContent({ uuid }: { uuid: string }) {
             <ErrorMessage message={actionError} />
             <div className="flex flex-wrap gap-2">
               <Button
-                variant={user.is_admin ? 'destructive' : 'outline'}
+                variant={userAccount.is_admin ? 'destructive' : 'outline'}
                 onClick={handleToggleAdmin}
                 disabled={isActing || isSelf}
               >
-                {user.is_admin ? 'Revoke admin' : 'Grant admin'}
+                {userAccount.is_admin ? 'Revoke admin' : 'Grant admin'}
               </Button>
               <Button
                 variant="outline"
@@ -265,7 +265,7 @@ function UserDetailContent({ uuid }: { uuid: string }) {
   );
 }
 
-export default function UserDetailPage({
+export default function UserAccountDetailPage({
   params,
 }: {
   params: Promise<{ uuid: string }>;
@@ -273,7 +273,7 @@ export default function UserDetailPage({
   const { uuid } = use(params);
   return (
     <RequireAuth requireAdmin>
-      <UserDetailContent uuid={uuid} />
+      <UserAccountDetailContent uuid={uuid} />
     </RequireAuth>
   );
 }

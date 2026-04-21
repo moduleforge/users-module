@@ -27,16 +27,16 @@ func newResolverWithStub(t *testing.T, localIssuer string, lookup uuidLookupFn) 
 
 func TestResolver_LocalIssuerFastPath_Success(t *testing.T) {
 	wantUUID := uuid.New()
-	wantUser := db.User{
-		ID:       42,
-		Uuid:     wantUUID,
-		EntityID: 41,
-		Email:    "alice@example.com",
-		IsAdmin:  false,
+	wantUser := db.UserAccount{
+		ID:            42,
+		Uuid:          wantUUID,
+		AccountHolder: 41,
+		Email:         "alice@example.com",
+		IsAdmin:       false,
 	}
 
 	calls := 0
-	lookup := func(ctx context.Context, u uuid.UUID) (db.User, error) {
+	lookup := func(ctx context.Context, u uuid.UUID) (db.UserAccount, error) {
 		calls++
 		if u != wantUUID {
 			t.Errorf("uuidLookup got %s, want %s", u, wantUUID)
@@ -57,8 +57,8 @@ func TestResolver_LocalIssuerFastPath_Success(t *testing.T) {
 	if calls != 1 {
 		t.Errorf("uuidLookup call count = %d, want 1", calls)
 	}
-	if uc.UserID != wantUser.ID {
-		t.Errorf("UserID = %d, want %d", uc.UserID, wantUser.ID)
+	if uc.UserAccountID != wantUser.ID {
+		t.Errorf("UserAccountID = %d, want %d", uc.UserAccountID, wantUser.ID)
 	}
 	if uc.UserUUID != wantUUID.String() {
 		t.Errorf("UserUUID = %q, want %q", uc.UserUUID, wantUUID.String())
@@ -69,8 +69,8 @@ func TestResolver_LocalIssuerFastPath_Success(t *testing.T) {
 }
 
 func TestResolver_LocalIssuerFastPath_DeletedUser(t *testing.T) {
-	lookup := func(ctx context.Context, u uuid.UUID) (db.User, error) {
-		return db.User{}, pgx.ErrNoRows
+	lookup := func(ctx context.Context, u uuid.UUID) (db.UserAccount, error) {
+		return db.UserAccount{}, pgx.ErrNoRows
 	}
 	r := newResolverWithStub(t, "users-module-local", lookup)
 
@@ -90,9 +90,9 @@ func TestResolver_LocalIssuerFastPath_DeletedUser(t *testing.T) {
 func TestResolver_LocalIssuerFastPath_BadSubject(t *testing.T) {
 	// uuidLookup should never be called if sub is not a valid UUID.
 	called := false
-	lookup := func(ctx context.Context, u uuid.UUID) (db.User, error) {
+	lookup := func(ctx context.Context, u uuid.UUID) (db.UserAccount, error) {
 		called = true
-		return db.User{}, nil
+		return db.UserAccount{}, nil
 	}
 	r := newResolverWithStub(t, "users-module-local", lookup)
 
@@ -115,9 +115,9 @@ func TestResolver_LocalIssuerFastPath_BadSubject(t *testing.T) {
 // OIDC code — which in turn fails because queries is nil. The specific failure
 // mode isn't the point; the point is that fast path gets skipped.
 func TestResolver_OIDCPath_FastPathSkipped(t *testing.T) {
-	lookup := func(ctx context.Context, u uuid.UUID) (db.User, error) {
+	lookup := func(ctx context.Context, u uuid.UUID) (db.UserAccount, error) {
 		t.Fatal("local-issuer fast path must not run for non-local issuer")
-		return db.User{}, nil
+		return db.UserAccount{}, nil
 	}
 	r := newResolverWithStub(t, "users-module-local", lookup)
 

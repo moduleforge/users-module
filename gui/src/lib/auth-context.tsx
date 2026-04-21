@@ -8,13 +8,13 @@ import React, {
   useState,
 } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, ApiRequestError, type UserSelf } from '@/lib/api';
+import { api, ApiRequestError, type UserAccountSelf } from '@/lib/api';
 
 const TOKEN_KEY = 'auth_token';
 
 interface AuthContextValue {
   token: string | null;
-  user: UserSelf | null;
+  user: UserAccountSelf | null;
   isLoading: boolean;
   isAdmin: boolean;
   login: (email: string, password: string) => Promise<void>;
@@ -25,7 +25,7 @@ interface AuthContextValue {
     familyName: string,
   ) => Promise<void>;
   logout: () => void;
-  setTokenAndUser: (token: string, user: UserSelf) => void;
+  setTokenAndUser: (token: string, user: UserAccountSelf) => void;
   /**
    * Finalize an externally-obtained session (e.g., OAuth callback) by
    * storing the token and hydrating the user from `/v1/self`. On failure,
@@ -40,10 +40,10 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [token, setToken] = useState<string | null>(null);
-  const [user, setUser] = useState<UserSelf | null>(null);
+  const [user, setUser] = useState<UserAccountSelf | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const setTokenAndUser = useCallback((newToken: string, newUser: UserSelf) => {
+  const setTokenAndUser = useCallback((newToken: string, newUser: UserAccountSelf) => {
     localStorage.setItem(TOKEN_KEY, newToken);
     setToken(newToken);
     setUser(newUser);

@@ -25,9 +25,9 @@ func NewAssumeHandler(q *db.Queries, jwtSecret, issuer string) *AssumeHandler {
 	return &AssumeHandler{q: q, jwtSecret: jwtSecret, issuer: issuer}
 }
 
-// Assume handles POST /v1/users/{uuid}/assume (admin).
-// Returns a JWT where the bearer acts as the assumed user while the audit
-// trail preserves the original admin identity.
+// Assume handles POST /v1/user-accounts/{uuid}/assume (admin).
+// Returns a JWT where the bearer acts as the assumed user account while the
+// audit trail preserves the original admin identity.
 func (h *AssumeHandler) Assume(w http.ResponseWriter, r *http.Request) {
 	rawUUID := chi.URLParam(r, "uuid")
 	parsed, err := uuid.Parse(rawUUID)
@@ -36,28 +36,28 @@ func (h *AssumeHandler) Assume(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	assumedUser, err := h.q.GetUserByUUID(r.Context(), parsed)
+	assumedUA, err := h.q.GetUserAccountByUUID(r.Context(), parsed)
 	if err == pgx.ErrNoRows {
-		server.Error(w, http.StatusNotFound, "not_found", "user not found")
+		server.Error(w, http.StatusNotFound, "not_found", "user account not found")
 		return
 	}
 	if err != nil {
-		slog.ErrorContext(r.Context(), "assume: get target user", "error", err)
-		server.Error(w, http.StatusInternalServerError, "internal_error", "failed to load target user")
+		slog.ErrorContext(r.Context(), "assume: get target user account", "error", err)
+		server.Error(w, http.StatusInternalServerError, "internal_error", "failed to load target user account")
 		return
 	}
 
 	uc := auth.MustFromContext(r.Context())
 
-	// Load the admin's own user record to include in the JWT.
-	adminUser, err := h.q.GetUserByID(r.Context(), uc.UserID)
+	// Load the admin's own user account record to include in the JWT.
+	adminUA, err := h.q.GetUserAccountByID(r.Context(), uc.UserAccountID)
 	if err != nil {
-		slog.ErrorContext(r.Context(), "assume: get admin user", "error", err)
-		server.Error(w, http.StatusInternalServerError, "internal_error", "failed to load admin user")
+		slog.ErrorContext(r.Context(), "assume: get admin user account", "error", err)
+		server.Error(w, http.StatusInternalServerError, "internal_error", "failed to load admin user account")
 		return
 	}
 
-	token, err := auth.IssueAssumeJWT(adminUser, assumedUser, h.jwtSecret, h.issuer)
+	token, err := auth.IssueAssumeJWT(adminUA, assumedUA, h.jwtSecret, h.issuer)
 	if err != nil {
 		slog.ErrorContext(r.Context(), "assume: issue jwt", "error", err)
 		server.Error(w, http.StatusInternalServerError, "internal_error", "failed to issue token")
@@ -65,15 +65,15 @@ func (h *AssumeHandler) Assume(w http.ResponseWriter, r *http.Request) {
 	}
 
 	slog.InfoContext(r.Context(), "admin assuming identity",
-		"admin_uuid", adminUser.Uuid.String(),
-		"assumed_uuid", assumedUser.Uuid.String(),
+		"admin_uuid", adminUA.Uuid.String(),
+		"assumed_uuid", assumedUA.Uuid.String(),
 	)
 
 	server.JSON(w, http.StatusOK, map[string]any{
 		"token": token,
 		"assumed_user": map[string]any{
-			"uuid":  assumedUser.Uuid.String(),
-			"email": assumedUser.Email,
+			"uuid":  assumedUA.Uuid.String(),
+			"email": assumedUA.Email,
 		},
 	})
 }

@@ -46,7 +46,7 @@ func (h *Handler) PasswordResetRequest(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		ctx := r.Context()
-		user, err := h.queries.GetUserByEmail(ctx, req.Email)
+		ua, err := h.queries.GetUserAccountByEmail(ctx, req.Email)
 		if err != nil {
 			return // silently ignore not-found or db errors
 		}
@@ -65,9 +65,9 @@ func (h *Handler) PasswordResetRequest(w http.ResponseWriter, r *http.Request) {
 
 		expiresAt := pgtype.Timestamptz{Time: time.Now().Add(30 * time.Minute), Valid: true}
 		_, err = h.queries.CreatePasswordReset(ctx, db.CreatePasswordResetParams{
-			UserID:    user.ID,
-			TokenHash: tokenHash,
-			ExpiresAt: expiresAt,
+			UserAccountID: ua.ID,
+			TokenHash:     tokenHash,
+			ExpiresAt:     expiresAt,
 		})
 		if err != nil {
 			slog.ErrorContext(ctx, "password_reset: insert", "error", err)
@@ -77,7 +77,7 @@ func (h *Handler) PasswordResetRequest(w http.ResponseWriter, r *http.Request) {
 		resetURL := fmt.Sprintf("%s/reset-password?token=%s", strings.TrimRight(h.guiBase, "/"), plainToken)
 		body := fmt.Sprintf("Click the link below to reset your password:\n\n%s\n\nThis link expires in 30 minutes. If you did not request a password reset, ignore this email.", resetURL)
 
-		if err := h.sender.Send(ctx, user.Email, "Reset your password", body); err != nil {
+		if err := h.sender.Send(ctx, ua.Email, "Reset your password", body); err != nil {
 			slog.ErrorContext(ctx, "password_reset: send email", "error", err)
 		}
 	}()
@@ -125,8 +125,8 @@ func (h *Handler) PasswordResetConfirm(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.queries.UpsertAuthLocal(r.Context(), db.UpsertAuthLocalParams{
-		UserID:       reset.UserID,
-		PasswordHash: hash,
+		UserAccountID: reset.UserAccountID,
+		PasswordHash:  hash,
 	}); err != nil {
 		slog.ErrorContext(r.Context(), "password_reset_confirm: upsert auth_local", "error", err)
 		server.Error(w, http.StatusInternalServerError, "internal_error", "failed to update password")

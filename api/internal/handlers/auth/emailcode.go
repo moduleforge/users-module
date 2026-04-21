@@ -68,12 +68,12 @@ func (h *Handler) EmailCodeRequest(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) sendEmailCode(r *http.Request, email, purpose string) {
 	ctx := r.Context()
 
-	user, err := h.queries.GetUserByEmail(ctx, email)
+	ua, err := h.queries.GetUserAccountByEmail(ctx, email)
 	if err == pgx.ErrNoRows {
 		return // anti-enumeration: silently skip
 	}
 	if err != nil {
-		slog.ErrorContext(ctx, "email_code: get user", "error", err)
+		slog.ErrorContext(ctx, "email_code: get user account", "error", err)
 		return
 	}
 
@@ -93,10 +93,10 @@ func (h *Handler) sendEmailCode(r *http.Request, email, purpose string) {
 
 	expiresAt := pgtype.Timestamptz{Time: time.Now().Add(5 * time.Minute), Valid: true}
 	_, err = h.queries.CreateEmailCode(ctx, db.CreateEmailCodeParams{
-		UserID:    user.ID,
-		CodeHash:  string(hash),
-		Purpose:   purpose,
-		ExpiresAt: expiresAt,
+		UserAccountID: ua.ID,
+		CodeHash:      string(hash),
+		Purpose:       purpose,
+		ExpiresAt:     expiresAt,
 	})
 	if err != nil {
 		slog.ErrorContext(ctx, "email_code: insert", "error", err)
@@ -109,7 +109,7 @@ func (h *Handler) sendEmailCode(r *http.Request, email, purpose string) {
 	}
 	body := fmt.Sprintf("Your verification code is: %s\n\nThis code expires in 5 minutes.", code)
 
-	if err := h.sender.Send(ctx, user.Email, subject, body); err != nil {
+	if err := h.sender.Send(ctx, ua.Email, subject, body); err != nil {
 		slog.ErrorContext(ctx, "email_code: send email", "error", err)
 	}
 }
@@ -131,20 +131,20 @@ func (h *Handler) EmailCodeVerify(w http.ResponseWriter, r *http.Request) {
 		req.Purpose = "login"
 	}
 
-	user, err := h.queries.GetUserByEmail(r.Context(), req.Email)
+	ua, err := h.queries.GetUserAccountByEmail(r.Context(), req.Email)
 	if err == pgx.ErrNoRows {
 		server.Error(w, http.StatusUnauthorized, "unauthorized", "invalid code")
 		return
 	}
 	if err != nil {
-		slog.ErrorContext(r.Context(), "email_code_verify: get user", "error", err)
-		server.Error(w, http.StatusInternalServerError, "internal_error", "failed to look up user")
+		slog.ErrorContext(r.Context(), "email_code_verify: get user account", "error", err)
+		server.Error(w, http.StatusInternalServerError, "internal_error", "failed to look up user account")
 		return
 	}
 
 	emailCode, err := h.queries.GetActiveEmailCode(r.Context(), db.GetActiveEmailCodeParams{
-		UserID:  user.ID,
-		Purpose: req.Purpose,
+		UserAccountID: ua.ID,
+		Purpose:       req.Purpose,
 	})
 	if err == pgx.ErrNoRows {
 		server.Error(w, http.StatusUnauthorized, "unauthorized", "invalid or expired code")
@@ -167,7 +167,7 @@ func (h *Handler) EmailCodeVerify(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Purpose == "login" {
-		token, err := localauth.IssueLocalJWT(user, user.IsAdmin, h.jwtSecret, h.issuer)
+		token, err := localauth.IssueLocalJWT(ua, ua.IsAdmin, h.jwtSecret, h.issuer)
 		if err != nil {
 			slog.ErrorContext(r.Context(), "email_code_verify: issue jwt", "error", err)
 			server.Error(w, http.StatusInternalServerError, "internal_error", "failed to issue token")
@@ -176,9 +176,9 @@ func (h *Handler) EmailCodeVerify(w http.ResponseWriter, r *http.Request) {
 		server.JSON(w, http.StatusOK, map[string]any{
 			"token": token,
 			"user": map[string]any{
-				"uuid":     user.Uuid.String(),
-				"email":    user.Email,
-				"is_admin": user.IsAdmin,
+				"uuid":     ua.Uuid.String(),
+				"email":    ua.Email,
+				"is_admin": ua.IsAdmin,
 			},
 		})
 		return
@@ -186,12 +186,12 @@ func (h *Handler) EmailCodeVerify(w http.ResponseWriter, r *http.Request) {
 
 	// verify_email purpose: mark email as verified.
 	now := time.Now()
-	_ = h.queries.UpdateUser(r.Context(), db.UpdateUserParams{
-		ID:              user.ID,
-		Email:           user.Email,
+	_ = h.queries.UpdateUserAccount(r.Context(), db.UpdateUserAccountParams{
+		ID:              ua.ID,
+		Email:           ua.Email,
 		EmailVerifiedAt: &now,
-		AuthIssuer:      user.AuthIssuer,
-		AuthID:          user.AuthID,
+		AuthIssuer:      ua.AuthIssuer,
+		AuthID:          ua.AuthID,
 	})
 
 	w.WriteHeader(http.StatusNoContent)

@@ -11,25 +11,25 @@ import (
 
 const deleteAuthLocal = `-- name: DeleteAuthLocal :exec
 DELETE FROM auth_local
-WHERE user_id = $1
+WHERE user_account_id = $1
 `
 
-func (q *Queries) DeleteAuthLocal(ctx context.Context, userID int64) error {
-	_, err := q.db.Exec(ctx, deleteAuthLocal, userID)
+func (q *Queries) DeleteAuthLocal(ctx context.Context, userAccountID int64) error {
+	_, err := q.db.Exec(ctx, deleteAuthLocal, userAccountID)
 	return err
 }
 
 const getAuthLocal = `-- name: GetAuthLocal :one
-SELECT user_id, password_hash, password_updated_at, created_at
+SELECT user_account_id, password_hash, password_updated_at, created_at
 FROM auth_local
-WHERE user_id = $1
+WHERE user_account_id = $1
 `
 
-func (q *Queries) GetAuthLocal(ctx context.Context, userID int64) (AuthLocal, error) {
-	row := q.db.QueryRow(ctx, getAuthLocal, userID)
+func (q *Queries) GetAuthLocal(ctx context.Context, userAccountID int64) (AuthLocal, error) {
+	row := q.db.QueryRow(ctx, getAuthLocal, userAccountID)
 	var i AuthLocal
 	err := row.Scan(
-		&i.UserID,
+		&i.UserAccountID,
 		&i.PasswordHash,
 		&i.PasswordUpdatedAt,
 		&i.CreatedAt,
@@ -38,19 +38,19 @@ func (q *Queries) GetAuthLocal(ctx context.Context, userID int64) (AuthLocal, er
 }
 
 const upsertAuthLocal = `-- name: UpsertAuthLocal :exec
-INSERT INTO auth_local (user_id, password_hash)
+INSERT INTO auth_local (user_account_id, password_hash)
 VALUES ($1, $2)
-ON CONFLICT (user_id) DO UPDATE
+ON CONFLICT (user_account_id) DO UPDATE
 SET password_hash = EXCLUDED.password_hash,
     password_updated_at = now()
 `
 
 type UpsertAuthLocalParams struct {
-	UserID       int64  `json:"user_id"`
-	PasswordHash string `json:"password_hash"`
+	UserAccountID int64  `json:"user_account_id"`
+	PasswordHash  string `json:"password_hash"`
 }
 
 func (q *Queries) UpsertAuthLocal(ctx context.Context, arg UpsertAuthLocalParams) error {
-	_, err := q.db.Exec(ctx, upsertAuthLocal, arg.UserID, arg.PasswordHash)
+	_, err := q.db.Exec(ctx, upsertAuthLocal, arg.UserAccountID, arg.PasswordHash)
 	return err
 }

@@ -15,9 +15,9 @@ type localClaims struct {
 	AssumedUserUUID string  `json:"assumed_user_uuid,omitempty"`
 }
 
-// IssueLocalJWT mints an HS256-signed JWT for a locally-authenticated user.
+// IssueLocalJWT mints an HS256-signed JWT for a locally-authenticated user account.
 // The token is valid for 24 hours.
-func IssueLocalJWT(user db.User, isAdmin bool, secret, issuer string) (string, error) {
+func IssueLocalJWT(ua db.UserAccount, isAdmin bool, secret, issuer string) (string, error) {
 	roles := []string{}
 	if isAdmin {
 		roles = append(roles, "admin")
@@ -26,7 +26,7 @@ func IssueLocalJWT(user db.User, isAdmin bool, secret, issuer string) (string, e
 	now := time.Now()
 	claims := localClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
-			Subject:   user.Uuid.String(),
+			Subject:   ua.Uuid.String(),
 			Issuer:    issuer,
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(24 * time.Hour)),
@@ -43,17 +43,17 @@ func IssueLocalJWT(user db.User, isAdmin bool, secret, issuer string) (string, e
 }
 
 // IssueAssumeJWT mints a JWT that carries assumed-user context for an admin.
-func IssueAssumeJWT(adminUser db.User, assumedUser db.User, secret, issuer string) (string, error) {
+func IssueAssumeJWT(adminUA db.UserAccount, assumedUA db.UserAccount, secret, issuer string) (string, error) {
 	now := time.Now()
 	claims := localClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
-			Subject:   adminUser.Uuid.String(),
+			Subject:   adminUA.Uuid.String(),
 			Issuer:    issuer,
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(24 * time.Hour)),
 		},
 		Roles:           []string{"admin"},
-		AssumedUserUUID: assumedUser.Uuid.String(),
+		AssumedUserUUID: assumedUA.Uuid.String(),
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)

@@ -13,7 +13,7 @@ import (
 
 type Querier interface {
 	ArchiveApp(ctx context.Context, id int64) error
-	AssignUserToApp(ctx context.Context, arg AssignUserToAppParams) error
+	AssignUserAccountToApp(ctx context.Context, arg AssignUserAccountToAppParams) error
 	// Clear the setup token once the operator has confirmed configuration.
 	// Idempotent — safe to call on every confirmed boot.
 	ClearSetupTokenHash(ctx context.Context) error
@@ -22,8 +22,8 @@ type Querier interface {
 	CreateApp(ctx context.Context, arg CreateAppParams) (App, error)
 	CreateEmailCode(ctx context.Context, arg CreateEmailCodeParams) (EmailCode, error)
 	CreatePasswordReset(ctx context.Context, arg CreatePasswordResetParams) (PasswordReset, error)
-	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
-	DeleteAuthLocal(ctx context.Context, userID int64) error
+	CreateUserAccount(ctx context.Context, arg CreateUserAccountParams) (UserAccount, error)
+	DeleteAuthLocal(ctx context.Context, userAccountID int64) error
 	// Remove a provider override row. Used by the "revert" endpoint — after
 	// deletion the merge layer falls back to env + well-known defaults.
 	// Returns the number of rows deleted so the handler can distinguish
@@ -33,26 +33,26 @@ type Querier interface {
 	GetActivePasswordReset(ctx context.Context, tokenHash string) (PasswordReset, error)
 	GetAppBySlug(ctx context.Context, slug string) (App, error)
 	GetAppByUUID(ctx context.Context, argUuid uuid.UUID) (App, error)
-	GetAuthLocal(ctx context.Context, userID int64) (AuthLocal, error)
+	GetAuthLocal(ctx context.Context, userAccountID int64) (AuthLocal, error)
 	GetOIDCConfig(ctx context.Context) (OidcConfig, error)
 	// Fetch one provider override row by id.
 	GetOIDCProvider(ctx context.Context, id string) (OidcProvider, error)
-	GetUserByAuth(ctx context.Context, arg GetUserByAuthParams) (User, error)
-	GetUserByEmail(ctx context.Context, lower string) (User, error)
-	GetUserByID(ctx context.Context, id int64) (User, error)
-	GetUserByUUID(ctx context.Context, argUuid uuid.UUID) (User, error)
-	ListAppUsers(ctx context.Context, appID int64) ([]AppsUser, error)
+	GetUserAccountByAuth(ctx context.Context, arg GetUserAccountByAuthParams) (UserAccount, error)
+	GetUserAccountByEmail(ctx context.Context, lower string) (UserAccount, error)
+	GetUserAccountByID(ctx context.Context, id int64) (UserAccount, error)
+	GetUserAccountByUUID(ctx context.Context, argUuid uuid.UUID) (UserAccount, error)
+	ListAppUserAccounts(ctx context.Context, appID int64) ([]AppsUserAccount, error)
 	ListApps(ctx context.Context) ([]App, error)
 	ListAuditByActor(ctx context.Context, arg ListAuditByActorParams) ([]AuditLog, error)
 	ListAuditByTarget(ctx context.Context, arg ListAuditByTargetParams) ([]AuditLog, error)
 	// Return every provider override row, sorted by id for stable output.
 	ListOIDCProviders(ctx context.Context) ([]OidcProvider, error)
 	ListRecentAudit(ctx context.Context, arg ListRecentAuditParams) ([]AuditLog, error)
-	ListUserApps(ctx context.Context, userID int64) ([]AppsUser, error)
-	RemoveUserFromApp(ctx context.Context, arg RemoveUserFromAppParams) error
-	SearchUsers(ctx context.Context, arg SearchUsersParams) ([]User, error)
+	ListUserAccountApps(ctx context.Context, userAccountID int64) ([]AppsUserAccount, error)
+	RemoveUserAccountFromApp(ctx context.Context, arg RemoveUserAccountFromAppParams) error
+	SearchUserAccounts(ctx context.Context, arg SearchUserAccountsParams) ([]UserAccount, error)
 	SetAdmin(ctx context.Context, arg SetAdminParams) error
-	SetAppUserRoles(ctx context.Context, arg SetAppUserRolesParams) error
+	SetAppUserAccountRoles(ctx context.Context, arg SetAppUserAccountRolesParams) error
 	SetDefaultApp(ctx context.Context, arg SetDefaultAppParams) error
 	// Narrow write used by /v1/oidc-config/confirm when the admin toggles a
 	// provider on/off from the summary page. Insert creates a row with just
@@ -68,7 +68,7 @@ type Querier interface {
 	// Per-provider enable flags live in the oidc_providers table and are
 	// upserted directly — no JSONB column on this singleton since 9.16.
 	UpdateOIDCConfig(ctx context.Context, optOut bool) error
-	UpdateUser(ctx context.Context, arg UpdateUserParams) error
+	UpdateUserAccount(ctx context.Context, arg UpdateUserAccountParams) error
 	UpsertAuthLocal(ctx context.Context, arg UpsertAuthLocalParams) error
 	// Insert or replace a provider override row. NULL override fields mean
 	// "no opinion at this layer"; the merge code treats NULL as pass-through

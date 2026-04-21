@@ -36,10 +36,10 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.queries.GetUserByEmail(r.Context(), req.Email)
+	ua, err := h.queries.GetUserAccountByEmail(r.Context(), req.Email)
 	if err != nil && err != pgx.ErrNoRows {
-		slog.ErrorContext(r.Context(), "login: get user by email", "error", err)
-		server.Error(w, http.StatusInternalServerError, "internal_error", "failed to look up user")
+		slog.ErrorContext(r.Context(), "login: get user account by email", "error", err)
+		server.Error(w, http.StatusInternalServerError, "internal_error", "failed to look up user account")
 		return
 	}
 
@@ -47,9 +47,9 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 
 	var storedHash string
 	if !notFound {
-		al, err2 := h.queries.GetAuthLocal(r.Context(), user.ID)
+		al, err2 := h.queries.GetAuthLocal(r.Context(), ua.ID)
 		if err2 != nil {
-			// User exists but has no local credentials — treat as not found.
+			// User account exists but has no local credentials — treat as not found.
 			notFound = true
 		} else {
 			storedHash = al.PasswordHash
@@ -74,21 +74,21 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := localauth.IssueLocalJWT(user, user.IsAdmin, h.jwtSecret, h.issuer)
+	token, err := localauth.IssueLocalJWT(ua, ua.IsAdmin, h.jwtSecret, h.issuer)
 	if err != nil {
 		slog.ErrorContext(r.Context(), "login: issue jwt", "error", err)
 		server.Error(w, http.StatusInternalServerError, "internal_error", "failed to issue token")
 		return
 	}
 
-	slog.InfoContext(r.Context(), "user logged in", "user_uuid", user.Uuid.String())
+	slog.InfoContext(r.Context(), "user logged in", "user_account_uuid", ua.Uuid.String())
 
 	server.JSON(w, http.StatusOK, map[string]any{
 		"token": token,
 		"user": map[string]any{
-			"uuid":     user.Uuid.String(),
-			"email":    user.Email,
-			"is_admin": user.IsAdmin,
+			"uuid":     ua.Uuid.String(),
+			"email":    ua.Email,
+			"is_admin": ua.IsAdmin,
 		},
 	})
 }

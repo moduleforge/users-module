@@ -105,7 +105,7 @@ async function request<T>(
 
 export interface LoginResponse {
   token: string;
-  user: UserSelf;
+  user: UserAccountSelf;
 }
 
 export interface OIDCProvider {
@@ -168,9 +168,9 @@ export interface ResetPasswordRequest {
   new_password: string;
 }
 
-// ─── Users ───────────────────────────────────────────────────────────────────
+// ─── User Accounts ───────────────────────────────────────────────────────────
 
-export interface UserSelf {
+export interface UserAccountSelf {
   uuid: string;
   email: string;
   given_name: string;
@@ -180,7 +180,7 @@ export interface UserSelf {
   updated_at: string;
 }
 
-export interface User {
+export interface UserAccount {
   uuid: string;
   email: string;
   given_name: string;
@@ -190,8 +190,8 @@ export interface User {
   updated_at: string;
 }
 
-export interface UserListResponse {
-  users: User[];
+export interface UserAccountListResponse {
+  user_accounts: UserAccount[];
   total: number;
 }
 
@@ -302,33 +302,33 @@ export const api = {
 
   self: {
     get: (options?: Pick<RequestOptions, 'skipAuthRedirect'>) =>
-      request<UserSelf>('/v1/self', options),
+      request<UserAccountSelf>('/v1/self', options),
     update: (data: UpdateProfileRequest) =>
-      request<UserSelf>('/v1/self', {
+      request<UserAccountSelf>('/v1/self', {
         method: 'PUT',
         body: JSON.stringify(data),
       }),
   },
 
-  users: {
+  userAccounts: {
     list: (query?: string) => {
       const qs = query ? `?q=${encodeURIComponent(query)}` : '';
-      return request<UserListResponse>(`/v1/users${qs}`);
+      return request<UserAccountListResponse>(`/v1/user-accounts${qs}`);
     },
-    get: (uuid: string) => request<User>(`/v1/users/${uuid}`),
+    get: (uuid: string) => request<UserAccount>(`/v1/user-accounts/${uuid}`),
     update: (uuid: string, data: UpdateProfileRequest) =>
-      request<User>(`/v1/users/${uuid}`, {
+      request<UserAccount>(`/v1/user-accounts/${uuid}`, {
         method: 'PUT',
         body: JSON.stringify(data),
       }),
     grantAdmin: (uuid: string) =>
-      request<User>(`/v1/users/${uuid}/admin`, { method: 'POST' }),
+      request<UserAccount>(`/v1/user-accounts/${uuid}/admin`, { method: 'POST' }),
     revokeAdmin: (uuid: string) =>
-      request<User>(`/v1/users/${uuid}/admin`, { method: 'DELETE' }),
+      request<UserAccount>(`/v1/user-accounts/${uuid}/admin`, { method: 'DELETE' }),
     assume: (uuid: string) =>
-      request<LoginResponse>(`/v1/users/${uuid}/assume`, { method: 'POST' }),
+      request<LoginResponse>(`/v1/user-accounts/${uuid}/assume`, { method: 'POST' }),
     audit: (uuid: string) =>
-      request<AuditListResponse>(`/v1/users/${uuid}/audit`),
+      request<AuditListResponse>(`/v1/user-accounts/${uuid}/audit`),
   },
 
   audit: {

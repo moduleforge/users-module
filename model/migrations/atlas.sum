@@ -1,0 +1,11 @@
+h1:oUg++koEXrjpMVXXREiVdcNyqVXTOXrCi3fmg7oeJ8c=
+0100_users.sql h1:Yh6jUzuHUd1r+/0lZYNgeozpUC5c7S83YqLiMOspcHc=
+0101_auth_local.sql h1:xlVpJvgdy25gX6nxLrGr21KtGy1nO3+y8uoBfkHIPaA=
+0102_email_codes.sql h1:7TOeLQvWz6PXkCTty1ncYJYNZcjBdGmLNOq6tuFxOsw=
+0103_password_resets.sql h1:+AKHFpWiApPB6TcHYdzc/F4MLNyyBhRQ46a4ReJthuA=
+0104_apps.sql h1:gveHIdhn+BTwpYJYePOAAjddx86WaKJ94J9c3Tyla2k=
+0105_apps_users.sql h1:DqagUOBCmF9f4sa3dRd8UfdKMiYuikrY2HnFw2K0I5w=
+0106_audit_log.sql h1:feQZ+FJD/D1/Ds5XvIx3E5H0L/YvyLUsQJxYA90fSy4=
+0107_oidc_config.sql h1:hvAzesWu48N6+iozBAvrOwfAkq//bdTdIjsdw9LzVJI=
+0108_oidc_providers.sql h1:wQkaFVfreI+m9v9QjeO+GKUEfOfhisKVXJxDPR3v1kI=
+0109_drop_provider_enabled_json.sql h1:tvSlRzME8OncEO3j90lp8ch4VdVbVryToWi5xxlWIH4=

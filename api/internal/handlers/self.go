@@ -28,24 +28,24 @@ func NewSelfHandler(q *db.Queries, coreQ *coredb.Queries, coreSvcs *coreservice.
 	return &SelfHandler{q: q, coreQ: coreQ, coreSvcs: coreSvcs, audit: aw}
 }
 
-// Get returns the caller's full profile: user-row fields + entity/subtype.
+// Get returns the caller's full profile: user account row fields + entity/subtype.
 func (h *SelfHandler) Get(w http.ResponseWriter, r *http.Request) {
 	uc := auth.MustFromContext(r.Context())
 
-	user, err := h.q.GetUserByID(r.Context(), uc.UserID)
+	ua, err := h.q.GetUserAccountByID(r.Context(), uc.UserAccountID)
 	if err != nil {
-		server.Error(w, http.StatusInternalServerError, "internal_error", "failed to load user")
+		server.Error(w, http.StatusInternalServerError, "internal_error", "failed to load user account")
 		return
 	}
 
-	principal := coreservice.Principal{UserID: uc.UserID, EntityID: uc.EntityID, IsAdmin: uc.IsAdmin}
+	principal := coreservice.Principal{UserID: uc.UserAccountID, EntityID: uc.EntityID, IsAdmin: uc.IsAdmin}
 	profile, err := h.coreSvcs.Entity.GetSelf(r.Context(), h.coreQ, principal)
 	if err != nil {
 		server.Error(w, http.StatusInternalServerError, "internal_error", "failed to load entity")
 		return
 	}
 
-	server.JSON(w, http.StatusOK, buildSelfResponse(user, profile))
+	server.JSON(w, http.StatusOK, buildSelfResponse(ua, profile))
 }
 
 // selfUpdateRequest is the body for PUT /v1/self.
@@ -65,16 +65,17 @@ func (h *SelfHandler) Put(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.q.GetUserByID(r.Context(), uc.UserID)
+	ua, err := h.q.GetUserAccountByID(r.Context(), uc.UserAccountID)
 	if err != nil {
-		server.Error(w, http.StatusInternalServerError, "internal_error", "failed to load user")
+		server.Error(w, http.StatusInternalServerError, "internal_error", "failed to load user account")
 		return
 	}
 
-	principal := coreservice.Principal{UserID: uc.UserID, EntityID: uc.EntityID, IsAdmin: uc.IsAdmin}
+	principal := coreservice.Principal{UserID: uc.UserAccountID, EntityID: uc.EntityID, IsAdmin: uc.IsAdmin}
 
 	if req.GivenName != nil || req.FamilyName != nil {
-		entity, err := h.coreQ.GetEntityByID(r.Context(), user.EntityID)
+		// account_holder = entity_id on the legal_entities/natural_persons chain.
+		entity, err := h.coreQ.GetEntityByID(r.Context(), ua.AccountHolder)
 		if err != nil {
 			server.Error(w, http.StatusInternalServerError, "internal_error", "failed to resolve entity")
 			return
@@ -99,18 +100,18 @@ func (h *SelfHandler) Put(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	server.JSON(w, http.StatusOK, buildSelfResponse(user, profile))
+	server.JSON(w, http.StatusOK, buildSelfResponse(ua, profile))
 }
 
 // buildSelfResponse composes the flat response shape the frontend
 // (UserSelf interface) expects.
-func buildSelfResponse(user db.User, profile coreservice.Profile) map[string]any {
+func buildSelfResponse(ua db.UserAccount, profile coreservice.Profile) map[string]any {
 	resp := map[string]any{
-		"uuid":       user.Uuid.String(),
-		"email":      user.Email,
-		"is_admin":   user.IsAdmin,
-		"created_at": user.CreatedAt.Time,
-		"updated_at": user.UpdatedAt.Time,
+		"uuid":       ua.Uuid.String(),
+		"email":      ua.Email,
+		"is_admin":   ua.IsAdmin,
+		"created_at": ua.CreatedAt.Time,
+		"updated_at": ua.UpdatedAt.Time,
 	}
 
 	switch profile.Kind {

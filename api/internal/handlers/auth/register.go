@@ -104,13 +104,13 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	coreQtx := h.coreQ.WithTx(tx)
 
 	// Determine first-user bootstrap.
-	var userCount int64
-	if err := tx.QueryRow(r.Context(), "SELECT count(*) FROM users").Scan(&userCount); err != nil {
-		slog.ErrorContext(r.Context(), "register: count users", "error", err)
+	var userAccountCount int64
+	if err := tx.QueryRow(r.Context(), "SELECT count(*) FROM user_accounts").Scan(&userAccountCount); err != nil {
+		slog.ErrorContext(r.Context(), "register: count user_accounts", "error", err)
 		server.Error(w, http.StatusInternalServerError, "internal_error", "failed to check user count")
 		return
 	}
-	isFirst := userCount == 0
+	isFirst := userAccountCount == 0
 
 	// Resolve the natural_person type ID from the types registry.
 	npType, err := coreQtx.GetTypeBySlug(r.Context(), "natural_person")
@@ -146,10 +146,12 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := qtx.CreateUser(r.Context(), db.CreateUserParams{
-		EntityID: entity.ID,
-		Email:    req.Email,
-		IsAdmin:  isFirst,
+	// account_holder references legal_entities(entity_id); entity.ID is valid
+	// because we just created the legal_entity row above.
+	ua, err := qtx.CreateUserAccount(r.Context(), db.CreateUserAccountParams{
+		AccountHolder: entity.ID,
+		Email:         req.Email,
+		IsAdmin:       isFirst,
 	})
 	if err != nil {
 		// Check for unique violation on email.
@@ -158,14 +160,14 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 			server.Error(w, http.StatusConflict, "email_taken", "an account with that email already exists")
 			return
 		}
-		slog.ErrorContext(r.Context(), "register: create user", "error", err)
-		server.Error(w, http.StatusInternalServerError, "internal_error", "failed to create user")
+		slog.ErrorContext(r.Context(), "register: create user account", "error", err)
+		server.Error(w, http.StatusInternalServerError, "internal_error", "failed to create user account")
 		return
 	}
 
 	if err := qtx.UpsertAuthLocal(r.Context(), db.UpsertAuthLocalParams{
-		UserID:       user.ID,
-		PasswordHash: hash,
+		UserAccountID: ua.ID,
+		PasswordHash:  hash,
 	}); err != nil {
 		slog.ErrorContext(r.Context(), "register: upsert auth_local", "error", err)
 		server.Error(w, http.StatusInternalServerError, "internal_error", "failed to save credentials")
@@ -178,12 +180,11 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Audit the creation using the new user as their own actor.
-	slog.InfoContext(r.Context(), "user registered", "user_uuid", user.Uuid.String(), "email", user.Email)
+	slog.InfoContext(r.Context(), "user registered", "user_account_uuid", ua.Uuid.String(), "email", ua.Email)
 
 	server.JSON(w, http.StatusCreated, map[string]any{
-		"uuid":  user.Uuid.String(),
-		"email": user.Email,
+		"uuid":  ua.Uuid.String(),
+		"email": ua.Email,
 	})
 }
 

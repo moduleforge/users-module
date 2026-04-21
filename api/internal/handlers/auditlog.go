@@ -29,8 +29,8 @@ func NewAuditHandler(q *db.Queries, coreQ *coredb.Queries, coreSvcs *coreservice
 	return &AuditHandler{q: q, coreQ: coreQ, coreSvcs: coreSvcs}
 }
 
-// ByUser handles GET /v1/users/{uuid}/audit (admin).
-// Returns audit log entries where the user is the actor.
+// ByUser handles GET /v1/user-accounts/{uuid}/audit (admin).
+// Returns audit log entries where the user account is the actor.
 func (h *AuditHandler) ByUser(w http.ResponseWriter, r *http.Request) {
 	rawUUID := chi.URLParam(r, "uuid")
 	parsed, err := uuid.Parse(rawUUID)
@@ -39,23 +39,23 @@ func (h *AuditHandler) ByUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.q.GetUserByUUID(r.Context(), parsed)
+	ua, err := h.q.GetUserAccountByUUID(r.Context(), parsed)
 	if err == pgx.ErrNoRows {
-		server.Error(w, http.StatusNotFound, "not_found", "user not found")
+		server.Error(w, http.StatusNotFound, "not_found", "user account not found")
 		return
 	}
 	if err != nil {
-		slog.ErrorContext(r.Context(), "audit.by_user: get user", "error", err)
-		server.Error(w, http.StatusInternalServerError, "internal_error", "failed to load user")
+		slog.ErrorContext(r.Context(), "audit.by_user: get user account", "error", err)
+		server.Error(w, http.StatusInternalServerError, "internal_error", "failed to load user account")
 		return
 	}
 
 	limit, offset := auditPagination(r)
 
 	entries, err := h.q.ListAuditByActor(r.Context(), db.ListAuditByActorParams{
-		ActorUserID: user.ID,
-		Limit:       limit,
-		Offset:      offset,
+		ActorUserAccountID: ua.ID,
+		Limit:              limit,
+		Offset:             offset,
 	})
 	if err != nil {
 		slog.ErrorContext(r.Context(), "audit.by_user: list", "error", err)
@@ -130,14 +130,14 @@ func auditResponses(entries []db.AuditLog) []map[string]any {
 	out := make([]map[string]any, 0, len(entries))
 	for _, e := range entries {
 		row := map[string]any{
-			"id":           e.ID,
-			"actor_user_id": e.ActorUserID,
-			"op":           e.Op,
-			"resource":     e.Resource,
-			"at":           e.At.Time,
+			"id":                    e.ID,
+			"actor_user_account_id": e.ActorUserAccountID,
+			"op":                    e.Op,
+			"resource":              e.Resource,
+			"at":                    e.At.Time,
 		}
-		if e.AssumedUserID.Valid {
-			row["assumed_user_id"] = e.AssumedUserID.Int64
+		if e.AssumedUserAccountID.Valid {
+			row["assumed_user_account_id"] = e.AssumedUserAccountID.Int64
 		}
 		if e.TargetEntityID.Valid {
 			row["target_entity_id"] = e.TargetEntityID.Int64

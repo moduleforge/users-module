@@ -24,7 +24,7 @@ func (CorePrincipalAdapter) FromContext(ctx context.Context) (*coreservice.Princ
 		return nil, false
 	}
 	return &coreservice.Principal{
-		UserID:   uc.UserID,
+		UserID:   uc.UserAccountID, // Principal.UserID is core-owned (generic "calling actor ID"); stays as-is
 		EntityID: uc.EntityID,
 		IsAdmin:  uc.IsAdmin,
 	}, true

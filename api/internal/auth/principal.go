@@ -12,24 +12,24 @@ type Principal struct {
 }
 
 // UserContext is the fully resolved in-process identity, populated after the
-// Principal has been matched against the users table.
+// Principal has been matched against the user_accounts table.
 type UserContext struct {
-	UserID      int64
-	UserUUID    string
-	EntityID    int64
-	Email       string
-	IsAdmin     bool             // user.is_admin OR principal has admin role
-	AssumedUser *AssumedUserInfo // non-nil while admin is assuming another user
-	AppID       *int64           // resolved app context
-	AppRoles    []string
+	UserAccountID int64
+	UserUUID      string
+	EntityID      int64
+	Email         string
+	IsAdmin       bool             // user_accounts.is_admin OR principal has admin role
+	AssumedUser   *AssumedUserInfo // non-nil while admin is assuming another user
+	AppID         *int64           // resolved app context
+	AppRoles      []string
 }
 
 // AssumedUserInfo carries the identity of the user an admin is currently impersonating.
 type AssumedUserInfo struct {
-	UserID   int64
-	UserUUID string
-	EntityID int64
-	Email    string
+	UserAccountID int64
+	UserUUID      string
+	EntityID      int64
+	Email         string
 }
 
 type contextKey int

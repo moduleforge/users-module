@@ -12,21 +12,21 @@ import (
 )
 
 const listAuditByActor = `-- name: ListAuditByActor :many
-SELECT id, actor_user_id, assumed_user_id, target_entity_id, op, resource, before, after, at
+SELECT id, actor_user_account_id, assumed_user_account_id, target_entity_id, op, resource, before, after, at
 FROM audit_log
-WHERE actor_user_id = $1
+WHERE actor_user_account_id = $1
 ORDER BY at DESC
 LIMIT $2 OFFSET $3
 `
 
 type ListAuditByActorParams struct {
-	ActorUserID int64 `json:"actor_user_id"`
-	Limit       int32 `json:"limit"`
-	Offset      int32 `json:"offset"`
+	ActorUserAccountID int64 `json:"actor_user_account_id"`
+	Limit              int32 `json:"limit"`
+	Offset             int32 `json:"offset"`
 }
 
 func (q *Queries) ListAuditByActor(ctx context.Context, arg ListAuditByActorParams) ([]AuditLog, error) {
-	rows, err := q.db.Query(ctx, listAuditByActor, arg.ActorUserID, arg.Limit, arg.Offset)
+	rows, err := q.db.Query(ctx, listAuditByActor, arg.ActorUserAccountID, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
@@ -36,8 +36,8 @@ func (q *Queries) ListAuditByActor(ctx context.Context, arg ListAuditByActorPara
 		var i AuditLog
 		if err := rows.Scan(
 			&i.ID,
-			&i.ActorUserID,
-			&i.AssumedUserID,
+			&i.ActorUserAccountID,
+			&i.AssumedUserAccountID,
 			&i.TargetEntityID,
 			&i.Op,
 			&i.Resource,
@@ -56,7 +56,7 @@ func (q *Queries) ListAuditByActor(ctx context.Context, arg ListAuditByActorPara
 }
 
 const listAuditByTarget = `-- name: ListAuditByTarget :many
-SELECT id, actor_user_id, assumed_user_id, target_entity_id, op, resource, before, after, at
+SELECT id, actor_user_account_id, assumed_user_account_id, target_entity_id, op, resource, before, after, at
 FROM audit_log
 WHERE target_entity_id = $1
 ORDER BY at DESC
@@ -80,8 +80,8 @@ func (q *Queries) ListAuditByTarget(ctx context.Context, arg ListAuditByTargetPa
 		var i AuditLog
 		if err := rows.Scan(
 			&i.ID,
-			&i.ActorUserID,
-			&i.AssumedUserID,
+			&i.ActorUserAccountID,
+			&i.AssumedUserAccountID,
 			&i.TargetEntityID,
 			&i.Op,
 			&i.Resource,
@@ -100,7 +100,7 @@ func (q *Queries) ListAuditByTarget(ctx context.Context, arg ListAuditByTargetPa
 }
 
 const listRecentAudit = `-- name: ListRecentAudit :many
-SELECT id, actor_user_id, assumed_user_id, target_entity_id, op, resource, before, after, at
+SELECT id, actor_user_account_id, assumed_user_account_id, target_entity_id, op, resource, before, after, at
 FROM audit_log
 ORDER BY at DESC
 LIMIT $1 OFFSET $2
@@ -122,8 +122,8 @@ func (q *Queries) ListRecentAudit(ctx context.Context, arg ListRecentAuditParams
 		var i AuditLog
 		if err := rows.Scan(
 			&i.ID,
-			&i.ActorUserID,
-			&i.AssumedUserID,
+			&i.ActorUserAccountID,
+			&i.AssumedUserAccountID,
 			&i.TargetEntityID,
 			&i.Op,
 			&i.Resource,
@@ -142,24 +142,24 @@ func (q *Queries) ListRecentAudit(ctx context.Context, arg ListRecentAuditParams
 }
 
 const writeAudit = `-- name: WriteAudit :exec
-INSERT INTO audit_log (actor_user_id, assumed_user_id, target_entity_id, op, resource, before, after)
+INSERT INTO audit_log (actor_user_account_id, assumed_user_account_id, target_entity_id, op, resource, before, after)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
 `
 
 type WriteAuditParams struct {
-	ActorUserID    int64       `json:"actor_user_id"`
-	AssumedUserID  pgtype.Int8 `json:"assumed_user_id"`
-	TargetEntityID pgtype.Int8 `json:"target_entity_id"`
-	Op             string      `json:"op"`
-	Resource       string      `json:"resource"`
-	Before         []byte      `json:"before"`
-	After          []byte      `json:"after"`
+	ActorUserAccountID   int64       `json:"actor_user_account_id"`
+	AssumedUserAccountID pgtype.Int8 `json:"assumed_user_account_id"`
+	TargetEntityID       pgtype.Int8 `json:"target_entity_id"`
+	Op                   string      `json:"op"`
+	Resource             string      `json:"resource"`
+	Before               []byte      `json:"before"`
+	After                []byte      `json:"after"`
 }
 
 func (q *Queries) WriteAudit(ctx context.Context, arg WriteAuditParams) error {
 	_, err := q.db.Exec(ctx, writeAudit,
-		arg.ActorUserID,
-		arg.AssumedUserID,
+		arg.ActorUserAccountID,
+		arg.AssumedUserAccountID,
 		arg.TargetEntityID,
 		arg.Op,
 		arg.Resource,

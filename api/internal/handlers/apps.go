@@ -191,14 +191,14 @@ func (h *AppsHandler) AssignUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.q.GetUserByUUID(r.Context(), userUUID)
+	ua, err := h.q.GetUserAccountByUUID(r.Context(), userUUID)
 	if err == pgx.ErrNoRows {
-		server.Error(w, http.StatusNotFound, "not_found", "user not found")
+		server.Error(w, http.StatusNotFound, "not_found", "user account not found")
 		return
 	}
 	if err != nil {
-		slog.ErrorContext(r.Context(), "apps.assign_user: get user", "error", err)
-		server.Error(w, http.StatusInternalServerError, "internal_error", "failed to load user")
+		slog.ErrorContext(r.Context(), "apps.assign_user: get user account", "error", err)
+		server.Error(w, http.StatusInternalServerError, "internal_error", "failed to load user account")
 		return
 	}
 
@@ -207,19 +207,19 @@ func (h *AppsHandler) AssignUser(w http.ResponseWriter, r *http.Request) {
 		roles = []string{}
 	}
 
-	if err := h.q.AssignUserToApp(r.Context(), db.AssignUserToAppParams{
-		AppID:  app.ID,
-		UserID: user.ID,
-		Roles:  roles,
+	if err := h.q.AssignUserAccountToApp(r.Context(), db.AssignUserAccountToAppParams{
+		AppID:         app.ID,
+		UserAccountID: ua.ID,
+		Roles:         roles,
 	}); err != nil {
 		slog.ErrorContext(r.Context(), "apps.assign_user", "error", err)
-		server.Error(w, http.StatusInternalServerError, "internal_error", "failed to assign user to app")
+		server.Error(w, http.StatusInternalServerError, "internal_error", "failed to assign user account to app")
 		return
 	}
 
 	server.JSON(w, http.StatusCreated, map[string]any{
 		"app_uuid":  app.Uuid.String(),
-		"user_uuid": user.Uuid.String(),
+		"user_uuid": ua.Uuid.String(),
 		"roles":     roles,
 	})
 }
@@ -231,18 +231,18 @@ func (h *AppsHandler) ListAppUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	members, err := h.q.ListAppUsers(r.Context(), app.ID)
+	members, err := h.q.ListAppUserAccounts(r.Context(), app.ID)
 	if err != nil {
 		slog.ErrorContext(r.Context(), "apps.list_users", "error", err)
-		server.Error(w, http.StatusInternalServerError, "internal_error", "failed to list app users")
+		server.Error(w, http.StatusInternalServerError, "internal_error", "failed to list app user accounts")
 		return
 	}
 
 	resp := make([]map[string]any, 0, len(members))
 	for _, m := range members {
 		resp = append(resp, map[string]any{
-			"user_id": m.UserID,
-			"roles":   m.Roles,
+			"user_account_id": m.UserAccountID,
+			"roles":           m.Roles,
 		})
 	}
 	server.JSON(w, http.StatusOK, map[string]any{"users": resp})
@@ -262,23 +262,23 @@ func (h *AppsHandler) RemoveUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.q.GetUserByUUID(r.Context(), userUUID)
+	ua, err := h.q.GetUserAccountByUUID(r.Context(), userUUID)
 	if err == pgx.ErrNoRows {
-		server.Error(w, http.StatusNotFound, "not_found", "user not found")
+		server.Error(w, http.StatusNotFound, "not_found", "user account not found")
 		return
 	}
 	if err != nil {
-		slog.ErrorContext(r.Context(), "apps.remove_user: get user", "error", err)
-		server.Error(w, http.StatusInternalServerError, "internal_error", "failed to load user")
+		slog.ErrorContext(r.Context(), "apps.remove_user: get user account", "error", err)
+		server.Error(w, http.StatusInternalServerError, "internal_error", "failed to load user account")
 		return
 	}
 
-	if err := h.q.RemoveUserFromApp(r.Context(), db.RemoveUserFromAppParams{
-		AppID:  app.ID,
-		UserID: user.ID,
+	if err := h.q.RemoveUserAccountFromApp(r.Context(), db.RemoveUserAccountFromAppParams{
+		AppID:         app.ID,
+		UserAccountID: ua.ID,
 	}); err != nil {
 		slog.ErrorContext(r.Context(), "apps.remove_user", "error", err)
-		server.Error(w, http.StatusInternalServerError, "internal_error", "failed to remove user from app")
+		server.Error(w, http.StatusInternalServerError, "internal_error", "failed to remove user account from app")
 		return
 	}
 
@@ -303,14 +303,14 @@ func (h *AppsHandler) UpdateUserRoles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.q.GetUserByUUID(r.Context(), userUUID)
+	ua, err := h.q.GetUserAccountByUUID(r.Context(), userUUID)
 	if err == pgx.ErrNoRows {
-		server.Error(w, http.StatusNotFound, "not_found", "user not found")
+		server.Error(w, http.StatusNotFound, "not_found", "user account not found")
 		return
 	}
 	if err != nil {
-		slog.ErrorContext(r.Context(), "apps.update_roles: get user", "error", err)
-		server.Error(w, http.StatusInternalServerError, "internal_error", "failed to load user")
+		slog.ErrorContext(r.Context(), "apps.update_roles: get user account", "error", err)
+		server.Error(w, http.StatusInternalServerError, "internal_error", "failed to load user account")
 		return
 	}
 
@@ -323,10 +323,10 @@ func (h *AppsHandler) UpdateUserRoles(w http.ResponseWriter, r *http.Request) {
 		req.Roles = []string{}
 	}
 
-	if err := h.q.SetAppUserRoles(r.Context(), db.SetAppUserRolesParams{
-		AppID:  app.ID,
-		UserID: user.ID,
-		Roles:  req.Roles,
+	if err := h.q.SetAppUserAccountRoles(r.Context(), db.SetAppUserAccountRolesParams{
+		AppID:         app.ID,
+		UserAccountID: ua.ID,
+		Roles:         req.Roles,
 	}); err != nil {
 		slog.ErrorContext(r.Context(), "apps.update_roles", "error", err)
 		server.Error(w, http.StatusInternalServerError, "internal_error", "failed to update roles")
@@ -335,7 +335,7 @@ func (h *AppsHandler) UpdateUserRoles(w http.ResponseWriter, r *http.Request) {
 
 	server.JSON(w, http.StatusOK, map[string]any{
 		"app_uuid":  app.Uuid.String(),
-		"user_uuid": user.Uuid.String(),
+		"user_uuid": ua.Uuid.String(),
 		"roles":     req.Roles,
 	})
 }

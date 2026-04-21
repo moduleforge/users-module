@@ -23,21 +23,21 @@ func (q *Queries) ConsumeEmailCode(ctx context.Context, id int64) error {
 }
 
 const createEmailCode = `-- name: CreateEmailCode :one
-INSERT INTO email_codes (user_id, code_hash, purpose, expires_at)
+INSERT INTO email_codes (user_account_id, code_hash, purpose, expires_at)
 VALUES ($1, $2, $3, $4)
-RETURNING id, user_id, code_hash, purpose, expires_at, consumed_at, created_at
+RETURNING id, user_account_id, code_hash, purpose, expires_at, consumed_at, created_at
 `
 
 type CreateEmailCodeParams struct {
-	UserID    int64              `json:"user_id"`
-	CodeHash  string             `json:"code_hash"`
-	Purpose   string             `json:"purpose"`
-	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
+	UserAccountID int64              `json:"user_account_id"`
+	CodeHash      string             `json:"code_hash"`
+	Purpose       string             `json:"purpose"`
+	ExpiresAt     pgtype.Timestamptz `json:"expires_at"`
 }
 
 func (q *Queries) CreateEmailCode(ctx context.Context, arg CreateEmailCodeParams) (EmailCode, error) {
 	row := q.db.QueryRow(ctx, createEmailCode,
-		arg.UserID,
+		arg.UserAccountID,
 		arg.CodeHash,
 		arg.Purpose,
 		arg.ExpiresAt,
@@ -45,7 +45,7 @@ func (q *Queries) CreateEmailCode(ctx context.Context, arg CreateEmailCodeParams
 	var i EmailCode
 	err := row.Scan(
 		&i.ID,
-		&i.UserID,
+		&i.UserAccountID,
 		&i.CodeHash,
 		&i.Purpose,
 		&i.ExpiresAt,
@@ -56,9 +56,9 @@ func (q *Queries) CreateEmailCode(ctx context.Context, arg CreateEmailCodeParams
 }
 
 const getActiveEmailCode = `-- name: GetActiveEmailCode :one
-SELECT id, user_id, code_hash, purpose, expires_at, consumed_at, created_at
+SELECT id, user_account_id, code_hash, purpose, expires_at, consumed_at, created_at
 FROM email_codes
-WHERE user_id = $1
+WHERE user_account_id = $1
   AND purpose = $2
   AND consumed_at IS NULL
   AND expires_at > now()
@@ -67,16 +67,16 @@ LIMIT 1
 `
 
 type GetActiveEmailCodeParams struct {
-	UserID  int64  `json:"user_id"`
-	Purpose string `json:"purpose"`
+	UserAccountID int64  `json:"user_account_id"`
+	Purpose       string `json:"purpose"`
 }
 
 func (q *Queries) GetActiveEmailCode(ctx context.Context, arg GetActiveEmailCodeParams) (EmailCode, error) {
-	row := q.db.QueryRow(ctx, getActiveEmailCode, arg.UserID, arg.Purpose)
+	row := q.db.QueryRow(ctx, getActiveEmailCode, arg.UserAccountID, arg.Purpose)
 	var i EmailCode
 	err := row.Scan(
 		&i.ID,
-		&i.UserID,
+		&i.UserAccountID,
 		&i.CodeHash,
 		&i.Purpose,
 		&i.ExpiresAt,

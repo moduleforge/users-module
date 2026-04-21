@@ -21,40 +21,40 @@ type App struct {
 	ArchivedAt *time.Time         `json:"archived_at"`
 }
 
-type AppsUser struct {
-	AppID      int64              `json:"app_id"`
-	UserID     int64              `json:"user_id"`
-	Roles      []string           `json:"roles"`
-	AssignedAt pgtype.Timestamptz `json:"assigned_at"`
+type AppsUserAccount struct {
+	AppID         int64              `json:"app_id"`
+	UserAccountID int64              `json:"user_account_id"`
+	Roles         []string           `json:"roles"`
+	AssignedAt    pgtype.Timestamptz `json:"assigned_at"`
 }
 
 type AuditLog struct {
-	ID             int64              `json:"id"`
-	ActorUserID    int64              `json:"actor_user_id"`
-	AssumedUserID  pgtype.Int8        `json:"assumed_user_id"`
-	TargetEntityID pgtype.Int8        `json:"target_entity_id"`
-	Op             string             `json:"op"`
-	Resource       string             `json:"resource"`
-	Before         []byte             `json:"before"`
-	After          []byte             `json:"after"`
-	At             pgtype.Timestamptz `json:"at"`
+	ID                   int64              `json:"id"`
+	ActorUserAccountID   int64              `json:"actor_user_account_id"`
+	AssumedUserAccountID pgtype.Int8        `json:"assumed_user_account_id"`
+	TargetEntityID       pgtype.Int8        `json:"target_entity_id"`
+	Op                   string             `json:"op"`
+	Resource             string             `json:"resource"`
+	Before               []byte             `json:"before"`
+	After                []byte             `json:"after"`
+	At                   pgtype.Timestamptz `json:"at"`
 }
 
 type AuthLocal struct {
-	UserID            int64              `json:"user_id"`
+	UserAccountID     int64              `json:"user_account_id"`
 	PasswordHash      string             `json:"password_hash"`
 	PasswordUpdatedAt pgtype.Timestamptz `json:"password_updated_at"`
 	CreatedAt         pgtype.Timestamptz `json:"created_at"`
 }
 
 type EmailCode struct {
-	ID         int64              `json:"id"`
-	UserID     int64              `json:"user_id"`
-	CodeHash   string             `json:"code_hash"`
-	Purpose    string             `json:"purpose"`
-	ExpiresAt  pgtype.Timestamptz `json:"expires_at"`
-	ConsumedAt *time.Time         `json:"consumed_at"`
-	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	ID            int64              `json:"id"`
+	UserAccountID int64              `json:"user_account_id"`
+	CodeHash      string             `json:"code_hash"`
+	Purpose       string             `json:"purpose"`
+	ExpiresAt     pgtype.Timestamptz `json:"expires_at"`
+	ConsumedAt    *time.Time         `json:"consumed_at"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
 }
 
 type OidcConfig struct {
@@ -79,18 +79,18 @@ type OidcProvider struct {
 }
 
 type PasswordReset struct {
-	ID         int64              `json:"id"`
-	UserID     int64              `json:"user_id"`
-	TokenHash  string             `json:"token_hash"`
-	ExpiresAt  pgtype.Timestamptz `json:"expires_at"`
-	ConsumedAt *time.Time         `json:"consumed_at"`
-	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	ID            int64              `json:"id"`
+	UserAccountID int64              `json:"user_account_id"`
+	TokenHash     string             `json:"token_hash"`
+	ExpiresAt     pgtype.Timestamptz `json:"expires_at"`
+	ConsumedAt    *time.Time         `json:"consumed_at"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
 }
 
-type User struct {
+type UserAccount struct {
 	ID              int64              `json:"id"`
 	Uuid            uuid.UUID          `json:"uuid"`
-	EntityID        int64              `json:"entity_id"`
+	AccountHolder   int64              `json:"account_holder"`
 	Email           string             `json:"email"`
 	EmailVerifiedAt *time.Time         `json:"email_verified_at"`
 	IsAdmin         bool               `json:"is_admin"`

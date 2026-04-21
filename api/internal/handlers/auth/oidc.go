@@ -216,14 +216,14 @@ func (h *OIDCHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.queries.GetUserByID(r.Context(), uc.UserID)
+	ua, err := h.queries.GetUserAccountByID(r.Context(), uc.UserAccountID)
 	if err != nil {
-		slog.ErrorContext(r.Context(), "oidc callback: reload user", "error", err)
-		server.Error(w, http.StatusInternalServerError, "internal_error", "user reload failed")
+		slog.ErrorContext(r.Context(), "oidc callback: reload user account", "error", err)
+		server.Error(w, http.StatusInternalServerError, "internal_error", "user account reload failed")
 		return
 	}
 
-	token, err := localauth.IssueLocalJWT(user, uc.IsAdmin, h.cfg.LocalAuth.JWTSecret, h.cfg.LocalAuth.LocalIssuer)
+	token, err := localauth.IssueLocalJWT(ua, uc.IsAdmin, h.cfg.LocalAuth.JWTSecret, h.cfg.LocalAuth.LocalIssuer)
 	if err != nil {
 		slog.ErrorContext(r.Context(), "oidc callback: issue jwt", "error", err)
 		server.Error(w, http.StatusInternalServerError, "internal_error", "token issuance failed")
@@ -235,7 +235,7 @@ func (h *OIDCHandler) Callback(w http.ResponseWriter, r *http.Request) {
 
 	slog.InfoContext(r.Context(), "oidc login succeeded",
 		"provider", providerID,
-		"user_uuid", user.Uuid.String(),
+		"user_account_uuid", ua.Uuid.String(),
 	)
 
 	redirectURL := h.buildSuccessRedirect(token, statePayload.ReturnPath)
@@ -361,13 +361,13 @@ func (h *OIDCHandler) writeLoginAudit(ctx context.Context, uc *localauth.UserCon
 	}
 
 	err = h.queries.WriteAudit(ctx, db.WriteAuditParams{
-		ActorUserID:    uc.UserID,
-		AssumedUserID:  pgtype.Int8{},
-		TargetEntityID: pgtype.Int8{Int64: uc.EntityID, Valid: true},
-		Op:             "login",
-		Resource:       "users",
-		Before:         nil,
-		After:          metaJSON,
+		ActorUserAccountID:   uc.UserAccountID,
+		AssumedUserAccountID: pgtype.Int8{},
+		TargetEntityID:       pgtype.Int8{Int64: uc.EntityID, Valid: true},
+		Op:                   "login",
+		Resource:             "user_account",
+		Before:               nil,
+		After:                metaJSON,
 	})
 	if err != nil {
 		slog.ErrorContext(ctx, "oidc audit: write", "error", err)

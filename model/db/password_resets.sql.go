@@ -23,23 +23,23 @@ func (q *Queries) ConsumePasswordReset(ctx context.Context, id int64) error {
 }
 
 const createPasswordReset = `-- name: CreatePasswordReset :one
-INSERT INTO password_resets (user_id, token_hash, expires_at)
+INSERT INTO password_resets (user_account_id, token_hash, expires_at)
 VALUES ($1, $2, $3)
-RETURNING id, user_id, token_hash, expires_at, consumed_at, created_at
+RETURNING id, user_account_id, token_hash, expires_at, consumed_at, created_at
 `
 
 type CreatePasswordResetParams struct {
-	UserID    int64              `json:"user_id"`
-	TokenHash string             `json:"token_hash"`
-	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
+	UserAccountID int64              `json:"user_account_id"`
+	TokenHash     string             `json:"token_hash"`
+	ExpiresAt     pgtype.Timestamptz `json:"expires_at"`
 }
 
 func (q *Queries) CreatePasswordReset(ctx context.Context, arg CreatePasswordResetParams) (PasswordReset, error) {
-	row := q.db.QueryRow(ctx, createPasswordReset, arg.UserID, arg.TokenHash, arg.ExpiresAt)
+	row := q.db.QueryRow(ctx, createPasswordReset, arg.UserAccountID, arg.TokenHash, arg.ExpiresAt)
 	var i PasswordReset
 	err := row.Scan(
 		&i.ID,
-		&i.UserID,
+		&i.UserAccountID,
 		&i.TokenHash,
 		&i.ExpiresAt,
 		&i.ConsumedAt,
@@ -49,7 +49,7 @@ func (q *Queries) CreatePasswordReset(ctx context.Context, arg CreatePasswordRes
 }
 
 const getActivePasswordReset = `-- name: GetActivePasswordReset :one
-SELECT id, user_id, token_hash, expires_at, consumed_at, created_at
+SELECT id, user_account_id, token_hash, expires_at, consumed_at, created_at
 FROM password_resets
 WHERE token_hash = $1
   AND consumed_at IS NULL
@@ -61,7 +61,7 @@ func (q *Queries) GetActivePasswordReset(ctx context.Context, tokenHash string) 
 	var i PasswordReset
 	err := row.Scan(
 		&i.ID,
-		&i.UserID,
+		&i.UserAccountID,
 		&i.TokenHash,
 		&i.ExpiresAt,
 		&i.ConsumedAt,

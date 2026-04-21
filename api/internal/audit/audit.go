@@ -49,7 +49,7 @@ func (w *pgWriter) Write(ctx context.Context, op string, resource string, target
 
 	var assumedID pgtype.Int8
 	if uc.AssumedUser != nil {
-		assumedID = pgtype.Int8{Int64: uc.AssumedUser.UserID, Valid: true}
+		assumedID = pgtype.Int8{Int64: uc.AssumedUser.UserAccountID, Valid: true}
 	}
 
 	var targetID pgtype.Int8
@@ -58,13 +58,13 @@ func (w *pgWriter) Write(ctx context.Context, op string, resource string, target
 	}
 
 	err = w.q.WriteAudit(ctx, db.WriteAuditParams{
-		ActorUserID:    uc.UserID,
-		AssumedUserID:  assumedID,
-		TargetEntityID: targetID,
-		Op:             op,
-		Resource:       resource,
-		Before:         beforeJSON,
-		After:          afterJSON,
+		ActorUserAccountID:   uc.UserAccountID,
+		AssumedUserAccountID: assumedID,
+		TargetEntityID:       targetID,
+		Op:                   op,
+		Resource:             resource,
+		Before:               beforeJSON,
+		After:                afterJSON,
 	})
 	if err != nil {
 		// Audit failures are logged but do not break the user's request.
@@ -72,7 +72,7 @@ func (w *pgWriter) Write(ctx context.Context, op string, resource string, target
 			"error", err,
 			"op", op,
 			"resource", resource,
-			"actor_user_id", uc.UserID,
+			"actor_user_account_id", uc.UserAccountID,
 		)
 	}
 
