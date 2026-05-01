@@ -6,12 +6,6 @@ DATABASE_URL ?= postgresql://users:users@localhost:5432/users?sslmode=disable
 # for fresh clones before go work sync has run.
 CORE_DIR := $(shell go list -m -f '{{.Dir}}' github.com/moduleforge/core-model 2>/dev/null || echo ../../core-module/model)
 
-# Locate tags-model migrations via go list, falling back to a relative path.
-TAGS_DIR := $(shell go list -m -f '{{.Dir}}' github.com/moduleforge/tags-model 2>/dev/null || echo ../../tags-module/model)
-
-# Locate contacts-model migrations via go list, falling back to a relative path.
-CONTACTS_DIR := $(shell go list -m -f '{{.Dir}}' github.com/moduleforge/contacts-model 2>/dev/null || echo ../../contacts-module/model)
-
 # Set by preflight if sqlc is available.
 SQLC ?=
 
@@ -22,12 +16,10 @@ SQLC ?=
 # ---------------------------------------------------------------------------
 
 .PHONY: compose
-compose: ## Assemble composed migrations dir from core-model + tags-module + users-module
+compose: ## Assemble composed migrations dir from core-model + users-module
 	@rm -rf schema/migrations
 	@mkdir -p schema/migrations
 	@cp $(CORE_DIR)/migrations/*.sql schema/migrations/
-	@cp $(TAGS_DIR)/migrations/*.sql schema/migrations/
-	@cp $(CONTACTS_DIR)/migrations/*.sql schema/migrations/
 	@cp migrations/*.sql schema/migrations/
 	@atlas migrate hash --dir file://schema/migrations > /dev/null
 

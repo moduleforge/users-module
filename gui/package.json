@@ -10,7 +10,6 @@
   },
   "dependencies": {
     "@moduleforge/core-gui": "file:.yalc/@moduleforge/core-gui",
-    "@moduleforge/tags-gui": "file:.yalc/@moduleforge/tags-gui",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.468.0",

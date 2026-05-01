@@ -27,13 +27,6 @@ import (
 	"github.com/moduleforge/users-module/api/internal/observability"
 	"github.com/moduleforge/users-module/api/internal/server"
 	db "github.com/moduleforge/users-module/model/db"
-	tagsapi "github.com/moduleforge/tags-api/httpapi"
-	tagsservice "github.com/moduleforge/tags-api/service"
-	tagsdb "github.com/moduleforge/tags-model/db"
-
-	contactsapi "github.com/moduleforge/contacts-api/httpapi"
-	contactsservice "github.com/moduleforge/contacts-api/service"
-	contactsdb "github.com/moduleforge/contacts-model/db"
 )
 
 func main() {
@@ -217,8 +210,9 @@ func main() {
 
 	auditWriter := audit.New(queries)
 
-	// Build display renderer registry. Core and tags builtins are registered here
-	// so any consumer (core entity list, tag display) can render human-readable fields.
+	// Build display renderer registry. Only core builtins are registered here;
+	// peer modules (tags, contacts, etc.) are composed at the application layer,
+	// not from inside users-module.
 	displayReg := display.NewRegistry(coredb.New(pool))
 	coreservice.RegisterBuiltins(displayReg, coredb.New(pool))
 
@@ -231,33 +225,6 @@ func main() {
 		Audit:     auditWriter,
 		Principal: auth.CorePrincipalAdapter{},
 		Logger:    logger,
-	})
-
-	// Build tags services and router. tagsRouter mounts /tags/* and
-	// /entities/{uuid}/tags routes alongside coreRouter inside the /v1 authed group.
-	tagsservice.RegisterBuiltins(displayReg, tagsdb.New(pool))
-	tagsSvcs := tagsservice.New(tagsdb.New(pool), auditWriter)
-	tagsRouter := tagsapi.NewRouter(tagsapi.Deps{
-		Pool:        pool,
-		CoreQuerier: coredb.New(pool),
-		Services:    tagsSvcs,
-		Audit:       auditWriter,
-		Principal:   auth.CorePrincipalAdapter{},
-		Logger:      logger,
-	})
-
-	// Build contacts services and router. contactsRouter mounts /contacts/* and
-	// /legal-entities/{uuid}/contacts routes alongside coreRouter and tagsRouter
-	// inside the /v1 authed group.
-	contactsSvcs := contactsservice.New(contactsdb.New(pool), coredb.New(pool), auditWriter)
-	contactsRouter := contactsapi.NewRouter(contactsapi.Deps{
-		Pool:           pool,
-		CoreQuerier:    coredb.New(pool),
-		ContactQuerier: contactsdb.New(pool),
-		Services:       contactsSvcs,
-		Audit:          auditWriter,
-		Principal:      auth.CorePrincipalAdapter{},
-		Logger:         logger,
 	})
 
 	// Build email sender.
@@ -361,12 +328,6 @@ func main() {
 
 			// Core entity CRUD: /v1/entities/natural-persons, /corporations, etc.
 			r.Mount("/", coreRouter)
-
-			// Tags CRUD: /v1/tags/* and /v1/entities/{uuid}/tags.
-			r.Mount("/", tagsRouter)
-
-			// Contacts CRUD: /v1/contacts/* and /v1/legal-entities/{uuid}/contacts.
-			r.Mount("/", contactsRouter)
 
 			// Assume identity (admin).
 			r.Delete("/assume", assumeHandler.EndAssume)
