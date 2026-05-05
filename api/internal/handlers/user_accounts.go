@@ -15,7 +15,6 @@ import (
 
 	coredb "github.com/moduleforge/core-model/db"
 	coreservice "github.com/moduleforge/core-api/service"
-	"github.com/moduleforge/users-module/api/internal/audit"
 	localauth "github.com/moduleforge/users-module/api/internal/auth"
 	"github.com/moduleforge/users-module/api/internal/server"
 	db "github.com/moduleforge/users-module/model/db"
@@ -27,12 +26,11 @@ type UserAccountsHandler struct {
 	q        *db.Queries
 	coreQ    *coredb.Queries
 	coreSvcs *coreservice.Services
-	audit    audit.Writer
 }
 
 // NewUserAccountsHandler creates a UserAccountsHandler.
-func NewUserAccountsHandler(pool *pgxpool.Pool, q *db.Queries, coreQ *coredb.Queries, coreSvcs *coreservice.Services, aw audit.Writer) *UserAccountsHandler {
-	return &UserAccountsHandler{pool: pool, q: q, coreQ: coreQ, coreSvcs: coreSvcs, audit: aw}
+func NewUserAccountsHandler(pool *pgxpool.Pool, q *db.Queries, coreQ *coredb.Queries, coreSvcs *coreservice.Services) *UserAccountsHandler {
+	return &UserAccountsHandler{pool: pool, q: q, coreQ: coreQ, coreSvcs: coreSvcs}
 }
 
 // createUserAccountRequest is the body for POST /v1/user-accounts (admin).
@@ -157,13 +155,6 @@ func (h *UserAccountsHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	accountHolder := ua.AccountHolder
-	_ = h.audit.Write(r.Context(), "create", "user_account", &accountHolder, nil, map[string]any{
-		"uuid":     ua.Uuid.String(),
-		"email":    ua.Email,
-		"is_admin": ua.IsAdmin,
-	})
-
 	server.JSON(w, http.StatusCreated, userAccountResponse(ua))
 }
 
@@ -252,8 +243,6 @@ func (h *UserAccountsHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	before := userAccountResponse(ua)
-
 	newEmail := ua.Email
 	if req.Email != nil {
 		newEmail = strings.TrimSpace(strings.ToLower(*req.Email))
@@ -306,9 +295,6 @@ func (h *UserAccountsHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	after := userAccountResponse(updated)
 
-	accountHolder := ua.AccountHolder
-	_ = h.audit.Write(r.Context(), "update", "user_account", &accountHolder, before, after)
-
 	server.JSON(w, http.StatusOK, after)
 }
 
@@ -337,9 +323,6 @@ func (h *UserAccountsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	accountHolder := ua.AccountHolder
-	_ = h.audit.Write(r.Context(), "delete", "user_account", &accountHolder, userAccountResponse(ua), nil)
-
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -367,12 +350,6 @@ func (h *UserAccountsHandler) setAdmin(w http.ResponseWriter, r *http.Request, i
 		server.Error(w, http.StatusInternalServerError, "internal_error", "failed to update admin status")
 		return
 	}
-
-	accountHolder := ua.AccountHolder
-	_ = h.audit.Write(r.Context(), op, "user_account", &accountHolder,
-		map[string]any{"is_admin": !isAdmin},
-		map[string]any{"is_admin": isAdmin},
-	)
 
 	server.JSON(w, http.StatusOK, map[string]any{
 		"uuid":     ua.Uuid.String(),

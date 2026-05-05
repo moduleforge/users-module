@@ -43,11 +43,8 @@ type Querier interface {
 	GetUserAccountByUUID(ctx context.Context, argUuid uuid.UUID) (UserAccount, error)
 	ListAppUserAccounts(ctx context.Context, appID int64) ([]AppsUserAccount, error)
 	ListApps(ctx context.Context) ([]App, error)
-	ListAuditByActor(ctx context.Context, arg ListAuditByActorParams) ([]AuditLog, error)
-	ListAuditByTarget(ctx context.Context, arg ListAuditByTargetParams) ([]AuditLog, error)
 	// Return every provider override row, sorted by id for stable output.
 	ListOIDCProviders(ctx context.Context) ([]OidcProvider, error)
-	ListRecentAudit(ctx context.Context, arg ListRecentAuditParams) ([]AuditLog, error)
 	ListUserAccountApps(ctx context.Context, userAccountID int64) ([]AppsUserAccount, error)
 	RemoveUserAccountFromApp(ctx context.Context, arg RemoveUserAccountFromAppParams) error
 	SearchUserAccounts(ctx context.Context, arg SearchUserAccountsParams) ([]UserAccount, error)
@@ -80,7 +77,6 @@ type Querier interface {
 	// NULL doesn't distinguish "field absent" from "explicit null". This
 	// keeps the query trivial and the semantics readable.
 	UpsertOIDCProvider(ctx context.Context, arg UpsertOIDCProviderParams) (OidcProvider, error)
-	WriteAudit(ctx context.Context, arg WriteAuditParams) error
 }
 
 var _ Querier = (*Queries)(nil)

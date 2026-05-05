@@ -12,7 +12,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	coredb "github.com/moduleforge/core-model/db"
-	"github.com/moduleforge/users-module/api/internal/audit"
 	localauth "github.com/moduleforge/users-module/api/internal/auth"
 	"github.com/moduleforge/users-module/api/internal/server"
 	db "github.com/moduleforge/users-module/model/db"
@@ -29,7 +28,6 @@ type Handler struct {
 	pool      *pgxpool.Pool
 	queries   *db.Queries
 	coreQ     *coredb.Queries
-	audit     audit.Writer
 	jwtSecret string
 	issuer    string
 	sender    Sender
@@ -37,12 +35,11 @@ type Handler struct {
 }
 
 // New constructs a Handler.
-func New(pool *pgxpool.Pool, queries *db.Queries, coreQ *coredb.Queries, aw audit.Writer, jwtSecret, issuer string, sender Sender, guiBase string) *Handler {
+func New(pool *pgxpool.Pool, queries *db.Queries, coreQ *coredb.Queries, jwtSecret, issuer string, sender Sender, guiBase string) *Handler {
 	return &Handler{
 		pool:      pool,
 		queries:   queries,
 		coreQ:     coreQ,
-		audit:     aw,
 		jwtSecret: jwtSecret,
 		issuer:    issuer,
 		sender:    sender,

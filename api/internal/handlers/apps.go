@@ -9,20 +9,18 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/moduleforge/users-module/api/internal/audit"
 	"github.com/moduleforge/users-module/api/internal/server"
 	db "github.com/moduleforge/users-module/model/db"
 )
 
 // AppsHandler serves /v1/apps endpoints.
 type AppsHandler struct {
-	q     *db.Queries
-	audit audit.Writer
+	q *db.Queries
 }
 
 // NewAppsHandler creates an AppsHandler.
-func NewAppsHandler(q *db.Queries, aw audit.Writer) *AppsHandler {
-	return &AppsHandler{q: q, audit: aw}
+func NewAppsHandler(q *db.Queries) *AppsHandler {
+	return &AppsHandler{q: q}
 }
 
 type createAppRequest struct {
@@ -57,8 +55,6 @@ func (h *AppsHandler) Create(w http.ResponseWriter, r *http.Request) {
 		server.Error(w, http.StatusInternalServerError, "internal_error", "failed to create app")
 		return
 	}
-
-	_ = h.audit.Write(r.Context(), "create", "apps", nil, nil, appResponse(app))
 
 	server.JSON(w, http.StatusCreated, appResponse(app))
 }
@@ -115,8 +111,6 @@ func (h *AppsHandler) UpdateApp(w http.ResponseWriter, r *http.Request) {
 		newName = strings.TrimSpace(req.Name)
 	}
 
-	before := appResponse(app)
-
 	if err := h.q.UpdateApp(r.Context(), db.UpdateAppParams{
 		ID:   app.ID,
 		Slug: newSlug,
@@ -127,17 +121,15 @@ func (h *AppsHandler) UpdateApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	after := map[string]any{
-		"uuid": app.Uuid.String(),
-		"slug": newSlug,
-		"name": newName,
-	}
-	_ = h.audit.Write(r.Context(), "update", "apps", nil, before, after)
-
 	// Return refreshed record.
 	updated, err := h.q.GetAppByUUID(r.Context(), app.Uuid)
 	if err != nil {
-		server.JSON(w, http.StatusOK, after)
+		// Fall back to the computed values if reload fails.
+		server.JSON(w, http.StatusOK, map[string]any{
+			"uuid": app.Uuid.String(),
+			"slug": newSlug,
+			"name": newName,
+		})
 		return
 	}
 	server.JSON(w, http.StatusOK, appResponse(updated))
@@ -155,8 +147,6 @@ func (h *AppsHandler) DeleteApp(w http.ResponseWriter, r *http.Request) {
 		server.Error(w, http.StatusInternalServerError, "internal_error", "failed to archive app")
 		return
 	}
-
-	_ = h.audit.Write(r.Context(), "delete", "apps", nil, appResponse(app), nil)
 
 	w.WriteHeader(http.StatusNoContent)
 }

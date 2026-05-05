@@ -2,7 +2,6 @@ package auth
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -10,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 
 	localauth "github.com/moduleforge/users-module/api/internal/auth"
 	"github.com/moduleforge/users-module/api/internal/config"
@@ -230,9 +228,6 @@ func (h *OIDCHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Audit the login — best-effort; a failed audit write must not break login.
-	h.writeLoginAudit(r.Context(), uc, providerID, principal)
-
 	slog.InfoContext(r.Context(), "oidc login succeeded",
 		"provider", providerID,
 		"user_account_uuid", ua.Uuid.String(),
@@ -337,39 +332,3 @@ func requestIsHTTPS(r *http.Request) bool {
 	return false
 }
 
-// loginAuditMeta is the structured after-payload for the login audit row.
-// Email deliberately omitted — auditors reach the user record via the joined
-// users row referenced by resource_id / target_entity_id. Avoiding a denorm'd
-// copy here keeps the audit log consistent if the user later changes email.
-type loginAuditMeta struct {
-	Provider string `json:"provider"`
-	Linked   bool   `json:"linked"`
-}
-
-// writeLoginAudit records the login event directly via queries (not the
-// audit.Writer abstraction, which requires UserContext on ctx and is scoped
-// to admin-mutation handlers). Best-effort — failures log but do not abort.
-func (h *OIDCHandler) writeLoginAudit(ctx context.Context, uc *localauth.UserContext, providerID string, p localauth.Principal) {
-	meta := loginAuditMeta{
-		Provider: providerID,
-		Linked:   p.Subject != "" && p.Issuer != "",
-	}
-	metaJSON, err := json.Marshal(meta)
-	if err != nil {
-		slog.ErrorContext(ctx, "oidc audit: marshal meta", "error", err)
-		return
-	}
-
-	err = h.queries.WriteAudit(ctx, db.WriteAuditParams{
-		ActorUserAccountID:   uc.UserAccountID,
-		AssumedUserAccountID: pgtype.Int8{},
-		TargetEntityID:       pgtype.Int8{Int64: uc.EntityID, Valid: true},
-		Op:                   "login",
-		Resource:             "user_account",
-		Before:               nil,
-		After:                metaJSON,
-	})
-	if err != nil {
-		slog.ErrorContext(ctx, "oidc audit: write", "error", err)
-	}
-}

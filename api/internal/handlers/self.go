@@ -6,7 +6,6 @@ import (
 
 	coreservice "github.com/moduleforge/core-api/service"
 	coredb "github.com/moduleforge/core-model/db"
-	"github.com/moduleforge/users-module/api/internal/audit"
 	"github.com/moduleforge/users-module/api/internal/auth"
 	"github.com/moduleforge/users-module/api/internal/server"
 	db "github.com/moduleforge/users-module/model/db"
@@ -20,12 +19,11 @@ type SelfHandler struct {
 	q        *db.Queries
 	coreQ    *coredb.Queries
 	coreSvcs *coreservice.Services
-	audit    audit.Writer
 }
 
 // NewSelfHandler constructs the /self handler with its dependencies.
-func NewSelfHandler(q *db.Queries, coreQ *coredb.Queries, coreSvcs *coreservice.Services, aw audit.Writer) *SelfHandler {
-	return &SelfHandler{q: q, coreQ: coreQ, coreSvcs: coreSvcs, audit: aw}
+func NewSelfHandler(q *db.Queries, coreQ *coredb.Queries, coreSvcs *coreservice.Services) *SelfHandler {
+	return &SelfHandler{q: q, coreQ: coreQ, coreSvcs: coreSvcs}
 }
 
 // Get returns the caller's full profile: user account row fields + entity/subtype.

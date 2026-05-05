@@ -28,18 +28,6 @@ type AppsUserAccount struct {
 	AssignedAt    pgtype.Timestamptz `json:"assigned_at"`
 }
 
-type AuditLog struct {
-	ID                   int64              `json:"id"`
-	ActorUserAccountID   int64              `json:"actor_user_account_id"`
-	AssumedUserAccountID pgtype.Int8        `json:"assumed_user_account_id"`
-	TargetEntityID       pgtype.Int8        `json:"target_entity_id"`
-	Op                   string             `json:"op"`
-	Resource             string             `json:"resource"`
-	Before               []byte             `json:"before"`
-	After                []byte             `json:"after"`
-	At                   pgtype.Timestamptz `json:"at"`
-}
-
 type AuthLocal struct {
 	UserAccountID     int64              `json:"user_account_id"`
 	PasswordHash      string             `json:"password_hash"`

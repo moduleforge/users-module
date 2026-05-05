@@ -16,7 +16,6 @@ import (
 	"github.com/moduleforge/core-api/fieldcrypto"
 	coreservice "github.com/moduleforge/core-api/service"
 	"github.com/moduleforge/core-api/display"
-	"github.com/moduleforge/users-module/api/internal/audit"
 	"github.com/moduleforge/users-module/api/internal/auth"
 	"github.com/moduleforge/users-module/api/internal/config"
 	coredb "github.com/moduleforge/core-model/db"
@@ -208,8 +207,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	auditWriter := audit.New(queries)
-
 	// Build display renderer registry. Only core builtins are registered here;
 	// peer modules (tags, contacts, etc.) are composed at the application layer,
 	// not from inside users-module.
@@ -218,11 +215,12 @@ func main() {
 
 	// Build core services and router. coreSvcs delegates entity CRUD to the
 	// service layer; coreRouter mounts /entities/* routes (including /self).
-	coreSvcs := coreservice.New(coredb.New(pool), auditWriter, fieldCipher)
+	// TODO(phase-4.1): wire authz.Authorizer + *observer.ObserverGroup (composing audit-module's Observer)
+	//                  into this call. Build is broken until Phase 4.1 lands.
+	coreSvcs := coreservice.New(coredb.New(pool), fieldCipher)
 	coreRouter := corehttpapi.NewRouter(corehttpapi.Deps{
 		Pool:      pool,
 		Services:  coreSvcs,
-		Audit:     auditWriter,
 		Principal: auth.CorePrincipalAdapter{},
 		Logger:    logger,
 	})
@@ -248,7 +246,6 @@ func main() {
 		pool,
 		queries,
 		coreQueries,
-		auditWriter,
 		cfg.LocalAuth.JWTSecret,
 		cfg.LocalAuth.LocalIssuer,
 		emailSender,
@@ -258,11 +255,10 @@ func main() {
 	oidcHandler := authhandlers.NewOIDCHandler(queries, oauth, resolver, cfg)
 
 	// Handlers for authenticated routes.
-	selfHandler := handlers.NewSelfHandler(queries, coreQueries, coreSvcs, auditWriter)
-	usersHandler := handlers.NewUserAccountsHandler(pool, queries, coreQueries, coreSvcs, auditWriter)
+	selfHandler := handlers.NewSelfHandler(queries, coreQueries, coreSvcs)
+	usersHandler := handlers.NewUserAccountsHandler(pool, queries, coreQueries, coreSvcs)
 	assumeHandler := handlers.NewAssumeHandler(queries, cfg.LocalAuth.JWTSecret, cfg.LocalAuth.LocalIssuer)
-	auditHandler := handlers.NewAuditHandler(queries, coreQueries, coreSvcs)
-	appsHandler := handlers.NewAppsHandler(queries, auditWriter)
+	appsHandler := handlers.NewAppsHandler(queries)
 
 	providersHandler := handlers.NewProvidersHandler(handlers.ProvidersDeps{
 		Queries:      queries,
@@ -345,10 +341,6 @@ func main() {
 				r.Post("/user-accounts/{uuid}/grant-admin", usersHandler.GrantAdmin)
 				r.Post("/user-accounts/{uuid}/revoke-admin", usersHandler.RevokeAdmin)
 				r.Post("/user-accounts/{uuid}/assume", assumeHandler.Assume)
-
-				// Audit log.
-				r.Get("/user-accounts/{uuid}/audit", auditHandler.ByUser)
-				r.Get("/audit/{entity_uuid}", auditHandler.ByEntity)
 
 				// Apps (multi-tenancy).
 				r.Post("/apps", appsHandler.Create)
