@@ -34,6 +34,8 @@ require (
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/pgx/v5 v5.9.1
+	github.com/moduleforge/audit-api v0.0.0
+	github.com/moduleforge/audit-model v0.0.0
 	github.com/moduleforge/core-api v0.0.0
 	github.com/moduleforge/core-model v0.0.0
 	github.com/moduleforge/users-module/model v0.0.0
@@ -54,3 +56,7 @@ replace github.com/moduleforge/core-model v0.0.0 => ../../core-module/model
 replace github.com/moduleforge/users-module/model => ../model
 
 replace github.com/moduleforge/core-api v0.0.0 => ../../core-module/api
+
+replace github.com/moduleforge/audit-model v0.0.0 => ../../audit-module/model
+
+replace github.com/moduleforge/audit-api v0.0.0 => ../../audit-module/api

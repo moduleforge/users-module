@@ -46,6 +46,12 @@ UPDATE user_accounts
 SET default_app_id = $2
 WHERE id = $1;
 
+-- name: GetUserAccountByAccountHolder :one
+SELECT id, uuid, account_holder, email, email_verified_at, is_admin, default_app_id,
+       auth_issuer, auth_id, created_at, updated_at
+FROM user_accounts
+WHERE account_holder = $1;
+
 -- name: SearchUserAccounts :many
 SELECT id, uuid, account_holder, email, email_verified_at, is_admin, default_app_id,
        auth_issuer, auth_id, created_at, updated_at

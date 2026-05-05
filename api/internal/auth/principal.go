@@ -5,10 +5,11 @@ import "context"
 // Principal holds the normalized identity extracted from a verified JWT's claims.
 // It represents who the token says the bearer is, before any database lookup.
 type Principal struct {
-	Subject string   // OIDC sub
-	Issuer  string   // OIDC iss
-	Email   string
-	Roles   []string // normalized, lowercased
+	Subject         string   // OIDC sub
+	Issuer          string   // OIDC iss
+	Email           string
+	Roles           []string // normalized, lowercased
+	AssumedUserUUID string   // non-empty for assume-identity JWTs; UUID of the assumed user
 }
 
 // UserContext is the fully resolved in-process identity, populated after the

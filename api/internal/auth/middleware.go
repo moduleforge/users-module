@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/moduleforge/core-api/opctx"
 	"github.com/moduleforge/users-module/api/internal/server"
 )
 
@@ -98,7 +99,15 @@ func RequireAuth(verifier *Verifier, mapper ClaimMapper, resolver *UserResolver)
 				}
 				return
 			}
+			// Populate opctx values so downstream service code and the
+			// Authorizer can read actor identity via opctx.ActorEntityID.
+			// WithUserContext preserves the richer UserContext for handler-level
+			// code that needs fields beyond what opctx exposes (email, roles, etc.).
 			ctx := WithUserContext(r.Context(), uc)
+			ctx = opctx.WithActor(ctx, uc.EntityID)
+			if uc.AssumedUser != nil {
+				ctx = opctx.WithAssumedActor(ctx, uc.AssumedUser.EntityID)
+			}
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}

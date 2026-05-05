@@ -243,5 +243,21 @@ func (r *UserResolver) buildUserContext(ua db.UserAccount, p Principal) *UserCon
 		uc.AppID = &appID
 	}
 
+	// Populate AssumedUser when this is an assume-identity JWT. The assumed user
+	// is looked up by UUID; if the lookup fails we silently skip it (the assume
+	// session has degraded to a normal session, which is safe).
+	if p.AssumedUserUUID != "" && r.queries != nil {
+		if assumedUUID, err := uuid.Parse(p.AssumedUserUUID); err == nil {
+			if assumedUA, err := r.queries.GetUserAccountByUUID(context.Background(), assumedUUID); err == nil {
+				uc.AssumedUser = &AssumedUserInfo{
+					UserAccountID: assumedUA.ID,
+					UserUUID:      assumedUA.Uuid.String(),
+					EntityID:      assumedUA.AccountHolder,
+					Email:         assumedUA.Email,
+				}
+			}
+		}
+	}
+
 	return uc
 }

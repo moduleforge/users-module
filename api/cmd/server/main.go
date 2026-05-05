@@ -11,12 +11,18 @@ import (
 	"syscall"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 
+	auditdb "github.com/moduleforge/audit-model/db"
+	audithttpapi "github.com/moduleforge/audit-api/httpapi"
+	auditservice "github.com/moduleforge/audit-api/service"
 	corehttpapi "github.com/moduleforge/core-api/httpapi"
 	"github.com/moduleforge/core-api/fieldcrypto"
+	"github.com/moduleforge/core-api/observer"
 	coreservice "github.com/moduleforge/core-api/service"
 	"github.com/moduleforge/core-api/display"
 	"github.com/moduleforge/users-module/api/internal/auth"
+	localAuthz "github.com/moduleforge/users-module/api/internal/authz"
 	"github.com/moduleforge/users-module/api/internal/config"
 	coredb "github.com/moduleforge/core-model/db"
 	localdb "github.com/moduleforge/users-module/api/internal/db"
@@ -213,11 +219,28 @@ func main() {
 	displayReg := display.NewRegistry(coredb.New(pool))
 	coreservice.RegisterBuiltins(displayReg, coredb.New(pool))
 
+	// Build the Authorizer. Users-module's implementation enforces the policy:
+	// admins can do anything; non-admins can only access their own data.
+	// It reads is_admin via the users-module Querier (lookup by account_holder = entity_id).
+	az := localAuthz.New(db.New(pool))
+
+	// Build the audit-module Observer and compose it into an ObserverGroup.
+	// The audit Observer writes one audit_log row inside the operation's transaction,
+	// providing transactional consistency. This is the only place in users-module
+	// that imports audit-module; service code in internal/ remains agnostic.
+	auditObserver := auditservice.New(func(tx pgx.Tx) *auditdb.Queries {
+		return auditdb.New(tx)
+	})
+	observerGroup := observer.NewObserverGroup(auditObserver)
+
+	// Build audit-module's read service and HTTP handler. These serve
+	// GET /v1/audit, /v1/audit/by-actor/{uuid}, /v1/audit/by-entity/{entity_uuid}.
+	auditSvcs := auditservice.NewServices(auditdb.New(pool), coredb.New(pool), az)
+	auditHandler := audithttpapi.NewAuditHandler(auditSvcs.Audit)
+
 	// Build core services and router. coreSvcs delegates entity CRUD to the
 	// service layer; coreRouter mounts /entities/* routes (including /self).
-	// TODO(phase-4.1): wire authz.Authorizer + *observer.ObserverGroup (composing audit-module's Observer)
-	//                  into this call. Build is broken until Phase 4.1 lands.
-	coreSvcs := coreservice.New(coredb.New(pool), fieldCipher)
+	coreSvcs := coreservice.New(coredb.New(pool), pool, az, observerGroup, fieldCipher)
 	coreRouter := corehttpapi.NewRouter(corehttpapi.Deps{
 		Pool:      pool,
 		Services:  coreSvcs,
@@ -256,9 +279,9 @@ func main() {
 
 	// Handlers for authenticated routes.
 	selfHandler := handlers.NewSelfHandler(queries, coreQueries, coreSvcs)
-	usersHandler := handlers.NewUserAccountsHandler(pool, queries, coreQueries, coreSvcs)
+	usersHandler := handlers.NewUserAccountsHandler(pool, queries, coreQueries, coreSvcs, az, observerGroup)
 	assumeHandler := handlers.NewAssumeHandler(queries, cfg.LocalAuth.JWTSecret, cfg.LocalAuth.LocalIssuer)
-	appsHandler := handlers.NewAppsHandler(queries)
+	appsHandler := handlers.NewAppsHandler(pool, queries, az, observerGroup)
 
 	providersHandler := handlers.NewProvidersHandler(handlers.ProvidersDeps{
 		Queries:      queries,
@@ -327,6 +350,16 @@ func main() {
 
 			// Assume identity (admin).
 			r.Delete("/assume", assumeHandler.EndAssume)
+
+			// Audit log endpoints (admin-only). Authorization is enforced at the
+			// service layer by the Authorizer. URL change from the deprecated
+			// /v1/user-accounts/{uuid}/audit to audit-module's canonical shape:
+			//   GET /v1/audit                        — ListRecent (admin)
+			//   GET /v1/audit/by-actor/{uuid}        — entries where uuid is the actor
+			//   GET /v1/audit/by-entity/{entity_uuid} — entries where uuid is the target
+			r.Route("/audit", func(r chi.Router) {
+				audithttpapi.RegisterRoutes(r, auditHandler)
+			})
 
 			// Admin-only routes.
 			r.Group(func(r chi.Router) {

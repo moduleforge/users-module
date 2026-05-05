@@ -1,1 +1,5 @@
 bin/
+# Worktree-local go.work used for isolated builds outside the main workspace.
+# The authoritative workspace file is user-components/go.work.
+go.work
+go.work.sum
