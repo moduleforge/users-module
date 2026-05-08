@@ -101,8 +101,8 @@ type BootStateResult struct {
 //     else NoEnvNoFlag.
 //     - all enabled InitOK → ConfirmedOK.
 //     - any enabled failed → InitFailed (strict; partial failure is
-//       fatal — operators must disable a broken provider explicitly
-//       via /confirm before the app will serve traffic).
+//     fatal — operators must disable a broken provider explicitly
+//     via /confirm before the app will serve traffic).
 func DetermineBootState(providers []ProviderInitView, db DBConfigView, envNoOIDCAccounts bool) BootStateResult {
 	enabled := make([]string, 0, len(providers))
 	initOKCount := 0

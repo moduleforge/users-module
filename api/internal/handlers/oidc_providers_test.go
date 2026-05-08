@@ -200,12 +200,12 @@ func TestProviders_Get_EnvOnlyReturnsDefaults(t *testing.T) {
 	// the realistic google case where only client_id/secret are in
 	// env and the rest fall through to well-known defaults.
 	for name, got := range map[string]string{
-		"display_name":   view.DisplayNameSource,
-		"issuer_url":     view.IssuerURLSource,
-		"client_id":      view.ClientIDSource,
-		"client_secret":  view.ClientSecretSource,
-		"claim_style":    view.ClaimStyleSource,
-		"scopes":         view.ScopesSource,
+		"display_name":  view.DisplayNameSource,
+		"issuer_url":    view.IssuerURLSource,
+		"client_id":     view.ClientIDSource,
+		"client_secret": view.ClientSecretSource,
+		"claim_style":   view.ClaimStyleSource,
+		"scopes":        view.ScopesSource,
 	} {
 		if got != "env" {
 			t.Errorf("%s_source = %q, want env (env registry fully populated)", name, got)

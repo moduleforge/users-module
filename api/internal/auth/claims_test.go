@@ -45,13 +45,13 @@ func TestNewClaimMapper_UnknownStyle(t *testing.T) {
 // TestClaimMapper is the main table-driven test covering all providers.
 func TestClaimMapper(t *testing.T) {
 	type testCase struct {
-		name        string
-		style       string
-		opts        MapperOptions
-		claims      map[string]any
-		wantEmail   string
-		wantAdmin   bool  // whether "admin" role should be present
-		wantError   bool
+		name      string
+		style     string
+		opts      MapperOptions
+		claims    map[string]any
+		wantEmail string
+		wantAdmin bool // whether "admin" role should be present
+		wantError bool
 	}
 
 	tests := []testCase{
@@ -218,8 +218,8 @@ func TestClaimMapper(t *testing.T) {
 			style: "auth0",
 			opts:  MapperOptions{RolesNamespace: "https://myapp.example.com"},
 			claims: merge(baseClaims(), map[string]any{
-				"email":                                "u@example.com",
-				"https://myapp.example.com/roles":      []any{"admin", "editor"},
+				"email":                           "u@example.com",
+				"https://myapp.example.com/roles": []any{"admin", "editor"},
 			}),
 			wantEmail: "u@example.com",
 			wantAdmin: true,
@@ -228,8 +228,8 @@ func TestClaimMapper(t *testing.T) {
 			name:  "auth0/auto-detect-namespace",
 			style: "auth0",
 			claims: merge(baseClaims(), map[string]any{
-				"email":                                    "u@example.com",
-				"https://someapp.io/roles":                 []any{"admin"},
+				"email":                    "u@example.com",
+				"https://someapp.io/roles": []any{"admin"},
 			}),
 			wantEmail: "u@example.com",
 			wantAdmin: true,
@@ -395,8 +395,8 @@ func TestContextRoundTrip(t *testing.T) {
 	uc := &UserContext{
 		UserAccountID: 42,
 		UserUUID:      "uuid-abc",
-		Email:    "user@example.com",
-		IsAdmin:  true,
+		Email:         "user@example.com",
+		IsAdmin:       true,
 	}
 
 	ctx := WithUserContext(context.Background(), uc)

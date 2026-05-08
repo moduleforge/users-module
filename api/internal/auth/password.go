@@ -13,11 +13,11 @@ import (
 
 // argon2id parameters tuned for interactive login.
 const (
-	argonMemory    = 64 * 1024 // 64 MiB
-	argonTime      = 3
-	argonThreads   = 2
-	argonSaltLen   = 16
-	argonHashLen   = 32
+	argonMemory  = 64 * 1024 // 64 MiB
+	argonTime    = 3
+	argonThreads = 2
+	argonSaltLen = 16
+	argonHashLen = 32
 )
 
 // HashPassword hashes plain using argon2id and returns a PHC-formatted string.

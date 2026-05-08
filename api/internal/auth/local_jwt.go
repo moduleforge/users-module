@@ -11,8 +11,8 @@ import (
 // localClaims extends the registered JWT claims with application-specific fields.
 type localClaims struct {
 	jwt.RegisteredClaims
-	Roles          []string `json:"roles"`
-	AssumedUserUUID string  `json:"assumed_user_uuid,omitempty"`
+	Roles           []string `json:"roles"`
+	AssumedUserUUID string   `json:"assumed_user_uuid,omitempty"`
 }
 
 // IssueLocalJWT mints an HS256-signed JWT for a locally-authenticated user account.

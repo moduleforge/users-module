@@ -197,10 +197,10 @@ func TestAuthorize_Admin_AllowsAnything(t *testing.T) {
 		target    *int64
 	}{
 		{"read", ptr(int64(99))},   // other user
-		{"create", nil},             // pre-create (no ID)
-		{"list", nil},               // list
-		{"delete", ptr(int64(42))},  // any entity
-		{"update", ptr(int64(1))},   // own entity
+		{"create", nil},            // pre-create (no ID)
+		{"list", nil},              // list
+		{"delete", ptr(int64(42))}, // any entity
+		{"update", ptr(int64(1))},  // own entity
 	}
 
 	for _, tc := range tests {
@@ -276,7 +276,7 @@ func TestAuthorize_NonAdmin_ListDenied(t *testing.T) {
 // identity, the assumed user's permissions (not the admin's) apply.
 func TestAuthorize_AssumedActor_PolicyApplied(t *testing.T) {
 	q := newStubQuerier()
-	q.seed(1, true)  // entity_id=1 is admin (the real actor)
+	q.seed(1, true)   // entity_id=1 is admin (the real actor)
 	q.seed(50, false) // entity_id=50 is not admin (the assumed user)
 	az := authz.New(q)
 
@@ -319,4 +319,3 @@ func TestAuthorize_MissingUserAccount_MapsToForbidden(t *testing.T) {
 		t.Errorf("expected ErrForbidden for missing user_account, got %v", err)
 	}
 }
-
