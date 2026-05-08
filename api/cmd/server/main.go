@@ -17,6 +17,8 @@ import (
 	auditservice "github.com/moduleforge/audit-api/service"
 	auditdb "github.com/moduleforge/audit-model/db"
 	authzapi "github.com/moduleforge/authz-api/authz"
+	authzhttpapi "github.com/moduleforge/authz-api/httpapi"
+	authzservice "github.com/moduleforge/authz-api/service"
 	authzdb "github.com/moduleforge/authz-model/db"
 	"github.com/moduleforge/core-api/authz/setup"
 	"github.com/moduleforge/core-api/display"
@@ -263,6 +265,8 @@ func main() {
 		"service_account",
 		"legal_entity",
 		"tag",
+		"authz_actor_group",
+		"authz_target_group",
 	}
 	if err := setup.ApplyFuncs(ctx, pool, setup.NewGrantTableGenerator(), authzSlugs); err != nil {
 		slog.ErrorContext(ctx, "authz access-function setup failed", "error", err)
@@ -288,6 +292,19 @@ func main() {
 	// GET /v1/audit, /v1/audit/by-actor/{uuid}, /v1/audit/by-entity/{entity_uuid}.
 	auditSvcs := auditservice.NewServices(auditdb.New(pool), coredb.New(pool), az)
 	auditHandler := audithttpapi.NewAuditHandler(auditSvcs.Audit)
+
+	// Build authz-module services. These serve the admin authz management API
+	// under /v1/authz: operations, actor groups, target groups, and grants.
+	// typeResolver must be fully loaded before this point (it is, see above).
+	authzSvcs := authzservice.New(authzservice.Deps{
+		DB:           pool,
+		AuthzQ:       authzdb.New(pool),
+		CoreQ:        coredb.New(pool),
+		Az:           az,
+		Obs:          observerGroup,
+		TypeResolver: typeResolver,
+		OpReg:        opReg,
+	})
 
 	// Build core services and router. coreSvcs delegates entity CRUD to the
 	// service layer; coreRouter mounts /entities/* routes (including /self).
@@ -421,6 +438,16 @@ func main() {
 			//   GET /v1/audit/by-entity/{entity_uuid} — entries where uuid is the target
 			r.Route("/audit", func(r chi.Router) {
 				audithttpapi.RegisterRoutes(r, auditHandler)
+			})
+
+			// Authz management endpoints (admin-only). Authorization is enforced at the
+			// service layer via Authorize("manage", nil). Routes:
+			//   /v1/authz/operations — CRUD for operation definitions
+			//   /v1/authz/actor-groups — CRUD + member management for actor groups
+			//   /v1/authz/target-groups — CRUD + member management for target groups
+			//   /v1/authz/grants — create / list / get / revoke grants
+			r.Route("/authz", func(r chi.Router) {
+				authzhttpapi.RegisterRoutes(r, authzSvcs)
 			})
 
 			// Admin-only routes.
