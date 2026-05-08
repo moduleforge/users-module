@@ -3,6 +3,7 @@
 deploy/local/authelia/certs/
 node_modules/
 worktree/
+dist/
 
 # files
 *.tsbuildinfo
