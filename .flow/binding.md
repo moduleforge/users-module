@@ -9,10 +9,10 @@ notes: Session-binding manifest produced by `project-flow-check`. Regenerated on
 
 ## Project type
 
-- language: typescript / javascript (pnpm workspace monorepo)
+- language: typescript / javascript (bun workspace monorepo)
 - framework: react (gui/), next.js (example/) — detected in sub-packages only
-- runtime: node >=20 (engines field); packageManager pnpm@10.33.0 at root
-- additional markers: Makefile present, pnpm-workspace.yaml present, sub-projects: model (Go), api (Go), gui (TypeScript/React), example (Next.js)
+- runtime: bun >=1.0 (engines field); bun workspace declared in package.json
+- additional markers: Makefile present, bun.lock present, sub-projects: model (Go), api (Go), gui (TypeScript/React), example (Next.js)
 
 ## Build / test / run commands
 
