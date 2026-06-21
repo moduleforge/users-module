@@ -8,14 +8,14 @@
 # Detect current platform (e.g. "Darwin" on macOS, "Linux" in containers).
 CURRENT_OS := $(shell uname -s)
 
-# Auto-detect package manager: pnpm > npm.
-PM := $(shell if command -v pnpm >/dev/null 2>&1; then echo pnpm; else echo npm; fi)
-NPX := npx
+# bun is the package manager for this workspace.
+PM := bun
+NPX := bunx
 
-# pnpm hoists deps to the workspace root. We need to track platform there too.
-# Resolve root: walk up looking for pnpm-workspace.yaml.
+# bun hoists deps to the workspace root. We need to track platform there too.
+# Resolve root: walk up looking for bun.lock (workspace root marker).
 WORKSPACE_ROOT := $(shell d=$$PWD; while [ "$$d" != "/" ]; do \
-	if [ -f "$$d/pnpm-workspace.yaml" ]; then echo "$$d"; break; fi; \
+	if [ -f "$$d/bun.lock" ]; then echo "$$d"; break; fi; \
 	d=$$(dirname "$$d"); done)
 # Fall back to just this directory if not in a workspace.
 ifeq ($(WORKSPACE_ROOT),)
@@ -36,9 +36,9 @@ preflight: ## Check tools + fix stale node_modules
 		echo "ERROR: node is not installed."; \
 		exit 1; \
 	fi
-	@if ! command -v $(PM) >/dev/null 2>&1; then \
+	@if ! command -v bun >/dev/null 2>&1; then \
 		echo "FAIL"; \
-		echo "ERROR: neither pnpm nor npm found."; \
+		echo "ERROR: bun is not installed. See https://bun.sh"; \
 		exit 1; \
 	fi
 	@NEEDS_INSTALL=false; \

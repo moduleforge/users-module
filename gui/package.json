@@ -16,8 +16,8 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsup && npm run build:css",
-    "build:css": "npx @tailwindcss/cli -i src/styles.css -o dist/index.css --minify",
+    "build": "tsup && bun run build:css",
+    "build:css": "bunx @tailwindcss/cli -i src/styles.css -o dist/index.css --minify",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist build .yalc yalc.lock",
     "dev": "ladle serve --port 61002",
