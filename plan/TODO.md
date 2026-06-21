@@ -19,7 +19,7 @@ Tracking document for the active plan.
 ### Phase 03 — Migrate example/
 
 - [x] [001-update-example-makefile.md](./phase-03-example/001-update-example-makefile.md) — tier `` · branch `phase-03-task-01-update-example-makefile-for-bu` · commit `8b59697` · merge `c320193`
-- [ ] [002-install-example-deps.md](./phase-03-example/002-install-example-deps.md) — tier `` · branch `phase-03-task-02-verify-example-installs-cleanl` · commit `…` · merge `…`
+- [ ] [002-install-example-deps.md](./phase-03-example/002-install-example-deps.md) — tier `` · branch `phase-03-task-02-verify-example-installs-cleanl` · commit `090c404` · merge `…`
 
 ### Phase 04 — Validate full build
 
