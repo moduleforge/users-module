@@ -10,8 +10,8 @@
     "url": "https://github.com/moduleforge/users-module/issues"
   },
   "homepage": "https://github.com/moduleforge/users-module#readme",
-  "packageManager": "pnpm@10.33.0",
+  "workspaces": ["gui"],
   "engines": {
-    "node": ">=20"
+    "bun": ">=1.0"
   }
 }
