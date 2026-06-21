@@ -1,0 +1,72 @@
+plan: bun-migration
+phases:
+  - slug: root-workspace
+    number: 1
+    title: Root workspace migration
+    status: todo
+    tasks:
+      - slug: remove-pnpm-artifacts
+        number: "001"
+        title: Remove pnpm artifacts and configure bun workspace
+        status: todo
+        doc: plan/phase-01-root-workspace/001-remove-pnpm-artifacts.md
+        depends_on: []
+
+      - slug: bun-install-root
+        number: "002"
+        title: Run bun install at workspace root
+        status: todo
+        doc: plan/phase-01-root-workspace/002-bun-install-root.md
+        depends_on: [root-workspace/remove-pnpm-artifacts]
+
+  - slug: gui
+    number: 2
+    title: Migrate gui/
+    status: todo
+    tasks:
+      - slug: update-gui-scripts-and-makefile
+        number: "001"
+        title: Update gui/package.json scripts and gui/Makefile for bun
+        status: todo
+        doc: plan/phase-02-gui/001-update-gui-scripts-and-makefile.md
+        depends_on: [root-workspace/bun-install-root]
+
+      - slug: install-gui-deps
+        number: "002"
+        title: Verify gui/ installs cleanly with bun
+        status: todo
+        doc: plan/phase-02-gui/002-install-gui-deps.md
+        depends_on: [gui/update-gui-scripts-and-makefile]
+
+  - slug: example
+    number: 3
+    title: Migrate example/
+    status: todo
+    tasks:
+      - slug: update-example-makefile
+        number: "001"
+        title: Update example/Makefile for bun
+        status: todo
+        doc: plan/phase-03-example/001-update-example-makefile.md
+        depends_on: [root-workspace/bun-install-root]
+
+      - slug: install-example-deps
+        number: "002"
+        title: Verify example/ installs cleanly with bun
+        status: todo
+        doc: plan/phase-03-example/002-install-example-deps.md
+        depends_on: [example/update-example-makefile]
+
+  - slug: validate
+    number: 4
+    title: Validate full build
+    status: todo
+    tasks:
+      - slug: full-build-validation
+        number: "001"
+        title: Run make preflight + make build.gui + make build.example end-to-end
+        status: todo
+        doc: plan/phase-04-validate/001-full-build-validation.md
+        depends_on:
+          - gui/install-gui-deps
+          - example/install-example-deps
