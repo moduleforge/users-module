@@ -1,0 +1,27 @@
+version: 1
+items:
+    - title: yalc dep in gui/package.json
+      id: 3RgF
+      date: "2026-06-21"
+      tag: follow-up
+      text: '[plan/phase-01-root-workspace/002-bun-install-root.md] gui/package.json declares @moduleforge/core-gui via "file:.yalc/@moduleforge/core-gui" — a yalc local-link that is gitignored. Any fresh worktree or CI environment will fail bun install without the .yalc/ directory present. Consider removing the file: dep from dependencies in gui/package.json (keep as optional peer) or documenting the yalc setup step in the developer setup guide. Out of scope for bun-migration.'
+    - title: Next.js dual-lockfile warning
+      id: QLVr
+      date: "2026-06-21"
+      tag: follow-up
+      text: '[plan/phase-03-example/002-install-example-deps.md] Next.js warns about multiple lockfiles (bun.lock at repo root and example/bun.lock). Build succeeds. To silence, set outputFileTracingRoot in example/next.config.ts.'
+    - title: example/Makefile rm redundancy
+      id: 0Qv6
+      date: "2026-06-21"
+      tag: follow-up
+      text: '[phase-03] example/Makefile lines 43-45: `rm -rf $(WORKSPACE_ROOT)/node_modules node_modules` expands to same path twice (WORKSPACE_ROOT=.). Harmless but noisy. Simplify to `rm -rf node_modules`.'
+    - title: example/Makefile install idiom
+      id: bRL4
+      date: "2026-06-21"
+      tag: follow-up
+      text: '[phase-03] example/Makefile uses bare `bun install` while gui/Makefile uses `$(PM) install`. Functionally identical (PM=bun) but inconsistent. Consider aligning to `$(PM) install` and adding the `See https://bun.sh` URL to the error message on line 33.'
+    - title: CI workflow still uses pnpm
+      id: r86L
+      date: "2026-06-21"
+      tag: blocker
+      text: '[plan/phase-04-validate/001-full-build-validation.md] .github/workflows/ci.yml references pnpm in three jobs (lint, test, build) — installs pnpm via corepack and runs pnpm install --frozen-lockfile (lines 41-44, 65-68, 104-117). These jobs will fail in CI after the bun migration. A follow-up task is needed to replace pnpm with bun in the CI workflow.'
