@@ -1,0 +1,7 @@
+version: 1
+items:
+    - title: yalc dep in gui/package.json
+      id: 3RgF
+      date: "2026-06-21"
+      tag: follow-up
+      text: '[plan/phase-01-root-workspace/002-bun-install-root.md] gui/package.json declares @moduleforge/core-gui via "file:.yalc/@moduleforge/core-gui" — a yalc local-link that is gitignored. Any fresh worktree or CI environment will fail bun install without the .yalc/ directory present. Consider removing the file: dep from dependencies in gui/package.json (keep as optional peer) or documenting the yalc setup step in the developer setup guide. Out of scope for bun-migration.'
